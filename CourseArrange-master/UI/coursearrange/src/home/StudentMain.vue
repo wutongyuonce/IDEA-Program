@@ -23,32 +23,49 @@
         <el-aside width="200px">
           <!-- 侧边 -->
           <!-- 默认展开的索引default-active -->
-          <el-menu :default-active="default_active" @select="handleSelect" unique-opened>
-             <el-menu-item index="/index">
+          <el-menu :default-active="default_active" @select="handleSelect" unique-opened class="main-menu">
+            <el-menu-item index="/index" class="menu-item">
               <template slot="title">
                 <i class="el-icon-s-home"></i>
                 <span slot="title">首页</span>
               </template>
             </el-menu-item>
-            <el-menu-item index="/courseList">
+
+            <el-submenu index="1" class="menu-item">
+              <template slot="title">
+                <i class="el-icon-s-data"></i>
+                <span>排课管理</span>
+              </template>
+              <el-menu-item index="/classtasklist" class="sub-menu-item">
+                <span>课程计划</span>
+              </el-menu-item>
+              <el-menu-item index="/coursetable" class="sub-menu-item">
+                <span>查看课表</span>
+              </el-menu-item>
+            </el-submenu>
+
+            <el-menu-item index="/courseList" class="menu-item">
               <template slot="title">
                 <i class="el-icon-s-marketing"></i>
                 <span slot="title">课程表</span>
               </template>
             </el-menu-item>
-            <el-menu-item index="/emptyclassroom">
+
+            <el-menu-item index="/emptyclassroom" class="menu-item">
               <template slot="title">
                 <i class="el-icon-school"></i>
                 <span slot="title">空教室查询</span>
               </template>
             </el-menu-item>
-             <el-menu-item index="/center">
+
+            <el-menu-item index="/center" class="menu-item">
               <template slot="title">
                 <i class="el-icon-user"></i>
                 <span slot="title">个人中心</span>
               </template>
             </el-menu-item>
-            <el-menu-item index="/password">
+
+            <el-menu-item index="/password" class="menu-item">
               <template slot="title">
                 <i class="el-icon-unlock"></i>
                 <span slot="title">修改密码</span>
@@ -92,14 +109,11 @@ export default {
 
   methods: {
     handleCommand(command) {
-      // alert(command)
       if (command == "exit") {
         localStorage.removeItem("token");
         localStorage.removeItem("student");
-        // 判断，返回指定页面
-        this.$router.push("/student/login");
+        this.$router.push("/");
       } else if (command == "center") {
-        // 跳转到个人中心
         this.$router.push("/center");
       }
     },
@@ -113,8 +127,8 @@ export default {
     handleSelect(val) {
       this.default_active = val;
       if(val=='/index'){
-        // 网课页面
-        window.open('http://localhost:81/index.html')
+        // 跳转到系统主页
+        this.$router.push('/');
         return;
       }
       this.$router.push(val);
@@ -153,29 +167,57 @@ export default {
 }
 
 .el-aside {
-  background-color: #d3dce6;
+  background-color: #f0f2f5;
   color: #333;
-  text-align: center;
-  line-height: 200px;
+  text-align: left;
+  line-height: normal;
+  border-right: 1px solid #dcdfe6;
+}
+
+.main-menu {
+  border-right: none;
+  background-color: transparent;
+
+  .menu-item {
+    height: 56px;
+    line-height: 56px;
+    padding: 0 20px;
+    font-size: 14px;
+    color: #303133;
+    transition: all 0.3s;
+
+    &:hover {
+      background-color: #ecf5ff;
+    }
+
+    i {
+      margin-right: 10px;
+      font-size: 18px;
+      vertical-align: middle;
+    }
+  }
+
+  .sub-menu-item {
+    height: 50px;
+    line-height: 50px;
+    padding-left: 48px;
+    font-size: 14px;
+    color: #606266;
+
+    &:hover {
+      color: #409EFF;
+    }
+  }
 }
 
 .el-main {
-  background-color: #e9eef3;
+  background-color: #fff;
   color: #333;
   text-align: center;
-  padding: 10px;
+  padding: 20px;
 }
 
 body > .el-container {
   margin-bottom: 40px;
-}
-
-.el-container:nth-child(5) .el-aside,
-.el-container:nth-child(6) .el-aside {
-  line-height: 260px;
-}
-
-.el-container:nth-child(7) .el-aside {
-  line-height: 320px;
 }
 </style>

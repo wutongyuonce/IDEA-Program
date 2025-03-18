@@ -2,121 +2,130 @@
   <!-- 后台管理系统主界面 -->
   <div class="wrapper">
     <el-container>
-      <el-header>
-        <!-- 头 -->
-        <el-header style="text-align: right; font-size: 12px">
-          <!-- 系统标题 -->
+      <!-- 头部 -->
+      <el-header class="main-header">
+        <div class="header-title">智能排课系统</div>
+        <div class="header-right">
           <el-dropdown @command="handleCommand">
-            <i class="el-icon-setting" style="margin-right: 15px"></i>
+            <span class="user-info">
+              <i class="el-icon-user"></i>
+              {{ name }}
+              <i class="el-icon-arrow-down"></i>
+            </span>
             <el-dropdown-menu slot="dropdown">
               <el-dropdown-item command="center">个人中心</el-dropdown-item>
               <el-dropdown-item command="updatePassword">修改密码</el-dropdown-item>
               <el-dropdown-item command="exit">退出</el-dropdown-item>
             </el-dropdown-menu>
-          </el-dropdown>您好，
-          <span>{{name}}</span>
-        </el-header>
+          </el-dropdown>
+        </div>
       </el-header>
+
       <el-container>
-        <el-aside width="200px">
-          <!-- 侧边 -->
-          <!-- 默认展开的索引default-active -->
-          <el-menu :default-active="default_active" @select="handleSelect" unique-opened>
-            <el-menu-item index="0">
-              <template slot="title">
-                <router-link to="/systemdata" class="links">
-                  <i class="el-icon-setting"></i>系统数据
-                </router-link>
-              </template>
+        <!-- 侧边栏 -->
+        <el-aside width="220px">
+          <el-menu
+            :default-active="default_active"
+            @select="handleSelect"
+            unique-opened
+            background-color="#304156"
+            text-color="#fff"
+            active-text-color="#409EFF"
+            class="main-menu">
+            
+            <el-menu-item index="0" class="main-menu-item">
+              <router-link to="/systemdata" class="menu-link">
+                <i class="el-icon-setting"></i>
+                <span>系统数据</span>
+              </router-link>
             </el-menu-item>
 
-            <el-submenu index="1">
+            <el-submenu index="1" class="main-menu-item">
               <template slot="title">
-                <i class="el-icon-s-data"></i>排课管理
+                <i class="el-icon-s-data"></i>
+                <span>排课管理</span>
               </template>
-              <el-menu-item index="1-1" v-if="!isTeacher">
-                <router-link to="/classtasklist" class="links">课程计划</router-link>
+              <el-menu-item index="1-1" v-if="!isTeacher" class="sub-menu-item">
+                <router-link to="/classtasklist" class="menu-link">课程计划</router-link>
               </el-menu-item>
-              <el-menu-item index="1-2">
-                <router-link to="/coursetable" class="links">查看课表</router-link>
-              </el-menu-item>
-            </el-submenu>
-
-            <el-submenu index="3" v-if="!isTeacher">
-              <template slot="title">
-                <i class="el-icon-user"></i>讲师管理
-              </template>
-              <el-menu-item-group>
-                <el-menu-item index="3-1">
-                  <router-link to="/teacherlist" class="links">所有讲师</router-link>
-                </el-menu-item>
-              </el-menu-item-group>
-            </el-submenu>
-
-            <el-submenu index="4">
-              <template slot="title">
-                <i class="el-icon-box"></i>班级管理
-              </template>
-              <el-menu-item-group>
-                <el-menu-item index="4-1">
-                  <router-link to="/classmanager" class="links">所有班级</router-link>
-                </el-menu-item>
-              </el-menu-item-group>
-            </el-submenu>
-
-            <el-submenu index="5">
-              <template slot="title">
-                <i class="el-icon-user"></i>学生管理
-              </template>
-              <el-menu-item-group>
-                <el-menu-item index="5-1">
-                  <router-link to="/studentlist" class="links">所有学生</router-link>
-                </el-menu-item>
-              </el-menu-item-group>
-            </el-submenu>
-
-            <el-submenu index="6">
-              <template slot="title">
-                <i class="el-icon-notebook-1"></i>教学资料
-              </template>
-              <el-menu-item index="6-1">
-                <router-link to="/courseinfolist" class="links">教材列表</router-link>
+              <el-menu-item index="1-2" class="sub-menu-item">
+                <router-link to="/coursetable" class="menu-link">查看课表</router-link>
               </el-menu-item>
             </el-submenu>
 
-            <el-submenu index="7" v-if="!isTeacher">
+            <el-submenu index="3" v-if="!isTeacher" class="main-menu-item">
               <template slot="title">
-                <i class="el-icon-office-building"></i>教学设施
+                <i class="el-icon-user"></i>
+                <span>讲师管理</span>
               </template>
-              <el-menu-item index="7-1">
-                <router-link class="links" to="/teachbuildinglist">教学楼管理</router-link>
-              </el-menu-item>
-              <el-menu-item index="7-2">
-                <router-link to="/classroomlist" class="links">教室列表</router-link>
-              </el-menu-item>
-              <el-menu-item index="7-3">
-                <router-link to="/setteacharea" class="links">教学区域安排</router-link>
+              <el-menu-item index="3-1" class="sub-menu-item">
+                <router-link to="/teacherlist" class="menu-link">所有讲师</router-link>
               </el-menu-item>
             </el-submenu>
-            <el-submenu index="8">
+
+            <el-submenu index="4" class="main-menu-item">
               <template slot="title">
-                <i class="el-icon-help"></i>帮助中心
+                <i class="el-icon-box"></i>
+                <span>班级管理</span>
               </template>
-              <el-menu-item index="8-1">
-                <router-link to="/help" class="links" >使用说明</router-link>
+              <el-menu-item index="4-1" class="sub-menu-item">
+                <router-link to="/classmanager" class="menu-link">所有班级</router-link>
+              </el-menu-item>
+            </el-submenu>
+
+            <el-submenu index="5" class="main-menu-item">
+              <template slot="title">
+                <i class="el-icon-user"></i>
+                <span>学生管理</span>
+              </template>
+              <el-menu-item index="5-1" class="sub-menu-item">
+                <router-link to="/studentlist" class="menu-link">所有学生</router-link>
+              </el-menu-item>
+            </el-submenu>
+
+            <el-submenu index="6" class="main-menu-item">
+              <template slot="title">
+                <i class="el-icon-notebook-1"></i>
+                <span>教学资料</span>
+              </template>
+              <el-menu-item index="6-1" class="sub-menu-item">
+                <router-link to="/courseinfolist" class="menu-link">教材列表</router-link>
+              </el-menu-item>
+            </el-submenu>
+
+            <el-submenu index="7" v-if="!isTeacher" class="main-menu-item">
+              <template slot="title">
+                <i class="el-icon-office-building"></i>
+                <span>教学设施</span>
+              </template>
+              <el-menu-item index="7-1" class="sub-menu-item">
+                <router-link to="/teachbuildinglist" class="menu-link">教学楼管理</router-link>
+              </el-menu-item>
+              <el-menu-item index="7-2" class="sub-menu-item">
+                <router-link to="/classroomlist" class="menu-link">教室列表</router-link>
+              </el-menu-item>
+              <el-menu-item index="7-3" class="sub-menu-item">
+                <router-link to="/setteacharea" class="menu-link">教学区域安排</router-link>
+              </el-menu-item>
+            </el-submenu>
+
+            <el-submenu index="8" class="main-menu-item">
+              <template slot="title">
+                <i class="el-icon-help"></i>
+                <span>帮助中心</span>
+              </template>
+              <el-menu-item index="8-1" class="sub-menu-item">
+                <router-link to="/help" class="menu-link">使用说明</router-link>
               </el-menu-item>
             </el-submenu>
           </el-menu>
         </el-aside>
 
-        <el-main>
-          <!-- Main区域，数据显示 -->
+        <!-- 主内容区 -->
+        <el-main class="main-content">
           <router-view></router-view>
         </el-main>
-
       </el-container>
-      <!-- 显示系统时间 -->
-      <el-footer>{{time}}</el-footer>
     </el-container>
   </div>
 </template>
@@ -186,57 +195,154 @@ export default {
 
 <style lang="less" scoped>
 .wrapper {
-  height: 100%;
-  width: 100%;
-  .a {
-    text-decoration: none !important;
-    color: #303133 !important;
+  min-height: 100vh;
+  display: flex;
+  
+  .el-container {
+    width: 100%;
+    min-height: 100vh;
   }
-  .links {
-    text-decoration: none !important;
-    color: #303133 !important;
+
+  .main-header {
+    background-color: #fff;
+    box-shadow: 0 1px 4px rgba(0,21,41,.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    height: 60px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    
+    .header-title {
+      font-size: 20px;
+      font-weight: bold;
+      color: #303133;
+    }
+    
+    .header-right {
+      .user-info {
+        font-size: 15px;
+        color: #606266;
+        cursor: pointer;
+        
+        i {
+          margin-right: 5px;
+        }
+      }
+    }
+  }
+  
+  .el-aside {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    bottom: 0;
+    background-color: #304156;
+    overflow-y: auto;
+    z-index: 999;
+    
+    .main-menu {
+      border-right: none;
+      min-height: 100%;
+    }
+  }
+
+  .el-main {
+    margin-left: 220px;
+    margin-top: 60px;
+    padding: 20px;
+    background-color: #f0f2f5;
+    min-height: calc(100vh - 60px);
   }
 }
 
-.el-container {
-  height: 100%;
-  padding: 0;
-  margin: 0;
+// 主菜单项样式
+.main-menu-item {
+  font-size: 16px !important;
+  font-weight: 500;
+  
+  .el-submenu__title {
+    font-size: 16px !important;
+    font-weight: 500;
+    height: 56px;
+    line-height: 56px;
+    
+    i {
+      color: #fff;
+      font-size: 18px;
+      margin-right: 12px;
+    }
+  }
+}
+
+// 子菜单项样式
+.sub-menu-item {
+  font-size: 14px !important;
+  background-color: #1f2d3d !important;
+  
+  &:hover {
+    background-color: #1f2d3d !important;
+  }
+  
+  .menu-link {
+    color: #fff !important;
+    
+    &:hover {
+      color: #409EFF !important;
+    }
+  }
+}
+
+// 所有菜单链接的通用样式
+.menu-link {
+  text-decoration: none !important;
+  color: #fff !important;
+  display: block;
   width: 100%;
+  height: 100%;
+  
+  &:hover {
+    color: #409EFF !important;
+  }
 }
 
-.el-header,
-.el-footer {
-  background-color: #b3c0d1;
-  color: #333;
-  text-align: center;
-  line-height: 60px;
+// 覆盖 element-ui 的默认样式
+::v-deep .el-menu-item {
+  height: 50px;
+  line-height: 50px;
+  
+  &.is-active {
+    background-color: #263445 !important;
+  }
 }
 
+::v-deep .el-submenu .el-menu-item {
+  min-width: 220px;
+  padding-left: 48px !important;
+}
+
+// 添加滚动条样式
 .el-aside {
-  background-color: #d3dce6;
-  color: #333;
-  text-align: center;
-  line-height: 200px;
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #41546d;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #304156;
+  }
 }
 
-.el-main {
-  background-color: #e9eef3;
-  color: #333;
-  text-align: center;
-  padding: 10px;
-}
-
-body > .el-container {
-  margin-bottom: 40px;
-}
-
-.el-container:nth-child(5) .el-aside,
-.el-container:nth-child(6) .el-aside {
-  line-height: 260px;
-}
-
-.el-container:nth-child(7) .el-aside {
-  line-height: 320px;
+// 确保内容区域正确显示
+.el-container {
+  flex-direction: column;
 }
 </style>

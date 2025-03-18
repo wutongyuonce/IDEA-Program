@@ -1,6 +1,8 @@
 <template>
-  <div id="chart" class="wrapper">
-    <!-- 系统数据 -->
+  <div class="container">
+    <div id="chart" class="chart-wrapper">
+      <!-- 系统数据 -->
+    </div>
   </div>
 </template>
 
@@ -103,11 +105,17 @@ export default {
 </script>
 
 <style lang="less" scoped>
-.wrapper {
-  margin: 0;
-  padding: 0;
-  position: absolute;
-  width: 85%;
-  height: 80%;
+.container {
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.chart-wrapper {
+  width: 100%;
+  height: 600px;
+  margin: 0 auto;
+  position: relative;
 }
 </style>

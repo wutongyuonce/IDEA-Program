@@ -1,46 +1,106 @@
 <template>
-  <div>
-    <!-- 功能 -->
-    <div class="header-menu">
-      <el-input placeholder="搜索学生" v-model="keyword" @clear="inputListener" clearable>
-        <el-button slot="append" type="primary" icon="el-icon-search" @click="searchStudent">搜索</el-button>
-      </el-input>
-      <el-select v-model="value1" placeholder="年级" @change="queryClass" @clear="gradeListener" clearable>
-        <el-option v-for="item in grade" :key="item.value" :label="item.label" :value="item.value"></el-option>
-      </el-select>
-      <el-select v-model="value2" placeholder="班级" @change="queryStudentByClass" @clear="classListener" clearable>
-        <el-option
-          v-for="item in classNo"
-          :key="item.value"
-          :label="item.label"
-          :value="item.value"
-        ></el-option>
-      </el-select>
+  <div class="page-container">
+    <div class="section-card">
+      <div class="header-actions">
+        <h2 class="page-title">学生管理</h2>
+        <div class="action-buttons">
+          <el-button type="primary" icon="el-icon-plus" @click="addStudent">添加学生</el-button>
+          <el-button type="success" icon="el-icon-upload2">批量导入</el-button>
+        </div>
+      </div>
+
+      <!-- 搜索和筛选区域 -->
+      <div class="search-section">
+        <el-input
+          v-model="keyword"
+          placeholder="请输入学生姓名"
+          clearable
+          @clear="inputListener"
+          style="width: 200px; margin-right: 10px;">
+          <el-button slot="append" icon="el-icon-search" @click="searchStudent">搜索</el-button>
+        </el-input>
+        
+        <el-select
+          v-model="value1"
+          placeholder="年级"
+          clearable
+          @change="queryClass"
+          @clear="gradeListener"
+          style="width: 120px; margin-right: 10px;">
+          <el-option
+            v-for="item in grade"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value">
+          </el-option>
+        </el-select>
+        
+        <el-select
+          v-model="value2"
+          placeholder="班级"
+          clearable
+          @change="queryStudentByClass"
+          @clear="classListener"
+          style="width: 120px;">
+          <el-option
+            v-for="item in classNo"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value">
+          </el-option>
+        </el-select>
+      </div>
+
+      <!-- 表格区域 -->
+      <el-table
+        :data="studentData"
+        border
+        stripe
+        style="width: 100%"
+        :header-cell-style="{
+          background: '#f5f7fa',
+          color: '#606266',
+          fontWeight: 'bold',
+          fontSize: '14px',
+          padding: '12px 0'
+        }"
+        :cell-style="{
+          padding: '8px 0'
+        }">
+        <el-table-column type="selection" width="55"></el-table-column>
+        <el-table-column prop="studentNo" label="学号" width="100"></el-table-column>
+        <el-table-column prop="realname" label="姓名" width="90"></el-table-column>
+        <el-table-column prop="username" label="昵称" width="90"></el-table-column>
+        <el-table-column prop="grade" label="年级" width="80"></el-table-column>
+        <el-table-column prop="classNo" label="班级" width="90"></el-table-column>
+        <el-table-column prop="age" label="年龄" width="70"></el-table-column>
+        <el-table-column prop="telephone" label="电话" width="120"></el-table-column>
+        <el-table-column prop="email" label="邮件" width="180"></el-table-column>
+        <el-table-column prop="address" label="地址" min-width="200"></el-table-column>
+        <el-table-column label="操作" width="150">
+          <template slot-scope="scope">
+            <el-button type="primary" size="mini" @click="editById(scope.$index, scope.row)">编辑</el-button>
+            <el-button type="danger" size="mini" @click="deleteById(scope.$index, scope.row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 分页区域 -->
+      <div class="pagination-container">
+        <el-pagination
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
+          :current-page.sync="page"
+          :page-sizes="[10, 20, 30, 50]"
+          :page-size="pageSize"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total">
+        </el-pagination>
+      </div>
     </div>
-    <!-- 数据显示 -->
-    <el-table :data="studentData" size="mini" :stripe="true" :highlight-current-row="true">
-      <el-table-column label="序号" type="selection"></el-table-column>
-      <!-- <el-table-column prop="id" label="ID"></el-table-column> -->
-      <el-table-column prop="studentNo" label="学号" fixed width="100"></el-table-column>
-      <el-table-column prop="realname" label="姓名" fixed width="100"></el-table-column>
-      <el-table-column prop="username" label="昵称" fixed width="100"></el-table-column>
-      <el-table-column prop="grade" label="年级" fixed width="100"></el-table-column>
-      <el-table-column prop="classNo" label="班级" fixed width="100"></el-table-column>
-      <el-table-column prop="age" label="年龄" fixed width="80"></el-table-column>
-      <el-table-column prop="telephone" label="电话" fixed width="100"></el-table-column>
-      <el-table-column prop="email" label="邮件" fixed width="150"></el-table-column>
-      <el-table-column prop="address" label="地址"></el-table-column>
 
-      <el-table-column prop="operation" label="操作">
-        <template slot-scope="scope">
-          <el-button type="danger" size="mini" @click="deleteById(scope.$index, scope.row)">删除</el-button>
-          <el-button type="primary" size="mini" @click="editById(scope.$index, scope.row)">编辑</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <!-- 弹出表单编辑学生 -->
-    <el-dialog title="编辑学生" :visible.sync="visibleForm">
+    <!-- 编辑弹窗 -->
+    <el-dialog title="编辑学生" :visible.sync="visibleForm" width="500px">
       <el-form
         :model="editFormData"
         label-position="left"
@@ -80,18 +140,6 @@
         <el-button type="primary" @click="commit()">提 交</el-button>
       </div>
     </el-dialog>
-
-    <!-- 上一页，当前页，下一页 -->
-    <div class="footer-button">
-      <el-pagination
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
-        :current-page.sync="page"
-        :page-size="pageSize"
-        layout="total, prev, pager, next"
-        :total="total"
-      ></el-pagination>
-    </div>
   </div>
 </template>
 
@@ -298,17 +346,104 @@ export default {
 </script>
 
 <style lang="less" scoped>
-.el-input-group {
-  width: 40%;
-}
-.header-menu {
-  margin-bottom: 5px;
-  padding: 0;
-  text-align: left;
-  margin-bottom: 5px;
+.page-container {
+  padding: 20px;
+  background-color: #f0f2f5;
 }
 
-.footer-button {
-  margin-top: 10px;
+.section-card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #ebeef5;
+  
+  .page-title {
+    font-size: 20px;
+    color: #303133;
+    margin: 0;
+    font-weight: 500;
+  }
+
+  .action-buttons {
+    .el-button {
+      margin-left: 10px;
+      padding: 9px 15px;
+    }
+  }
+}
+
+.search-section {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  
+  .el-input {
+    margin-right: 10px;
+  }
+}
+
+.el-table {
+  margin-bottom: 20px;
+  
+  ::v-deep .el-table__header th {
+    padding: 12px 0;
+    background-color: #f5f7fa;
+  }
+  
+  ::v-deep .el-table__body td {
+    padding: 8px 0;
+  }
+  
+  ::v-deep .el-button {
+    padding: 7px 12px;
+    & + .el-button {
+      margin-left: 6px;
+    }
+  }
+}
+
+.pagination-container {
+  text-align: right;
+  padding-top: 20px;
+  
+  ::v-deep .el-pagination {
+    padding: 2px 0;
+    font-weight: normal;
+    
+    .el-pagination__total,
+    .el-pagination__sizes,
+    .el-pagination__jump {
+      margin-right: 10px;
+    }
+  }
+}
+
+::v-deep .el-dialog {
+  .el-dialog__header {
+    padding: 15px 20px;
+    border-bottom: 1px solid #ebeef5;
+  }
+  
+  .el-dialog__body {
+    padding: 20px;
+  }
+  
+  .el-dialog__footer {
+    padding: 15px 20px;
+    border-top: 1px solid #ebeef5;
+  }
+  
+  .el-form-item {
+    margin-bottom: 20px;
+  }
 }
 </style>

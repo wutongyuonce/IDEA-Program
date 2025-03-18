@@ -26,6 +26,7 @@
       size="mini"
       :stripe="true"
       :highlight-current-row="true"
+      border
     >
       <el-table-column label="序号" type="selection"></el-table-column>
       <el-table-column
@@ -96,20 +97,18 @@
         </template>
       </el-table-column>
 
-      <el-table-column prop="operation" label="操作">
+      <el-table-column label="操作" width="150">
         <template slot-scope="scope">
-          <el-button
-            type="danger"
-            size="mini"
-            @click="deleteById(scope.$index, scope.row)"
-            >删除</el-button
-          >
-          <el-button
-            type="primary"
-            size="mini"
-            @click="editById(scope.$index, scope.row)"
-            >编辑</el-button
-          >
+          <el-button-group>
+            <el-button 
+              type="primary" 
+              size="mini" 
+              @click="editById(scope.$index, scope.row)">编辑</el-button>
+            <el-button 
+              type="danger" 
+              size="mini" 
+              @click="deleteById(scope.$index, scope.row)">删除</el-button>
+          </el-button-group>
         </template>
       </el-table-column>
     </el-table>
@@ -468,5 +467,21 @@ export default {
 
 .footer-button {
   margin-top: 10px;
+}
+
+.el-table {
+  ::v-deep .el-button-group {
+    .el-button {
+      margin: 0;
+      
+      &:first-child {
+        border-right: 1px solid rgba(255, 255, 255, 0.5);
+      }
+    }
+  }
+  
+  ::v-deep .el-button {
+    padding: 7px 12px;
+  }
 }
 </style>

@@ -13,7 +13,7 @@
         :model="studentLoginForm"
         :rules="studentLoginFormRules"
       >
-        <h3>学生登录</h3>
+        <h3 class="login-title">学生登录</h3>
         <!-- 用户名 -->
         <el-form-item prop="username">
           <el-input
@@ -34,8 +34,8 @@
         </el-form-item>
         <!-- 按钮 -->
         <el-form-item class="button">
-          <el-button type="primary" @click="login">登录</el-button>
-          <el-button type="info" @click="registerNo">注册账号</el-button>
+          <el-button type="primary" @click="login" class="login-btn">登录</el-button>
+          <el-button type="info" @click="registerNo" class="register-btn">注册账号</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -115,62 +115,127 @@ export default {
 </script>
 
 <style lang="less" scoped>
-.login-form {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  padding: 0 20px;
-  box-sizing: border-box;
-}
-
-// .login-type {
-//   display: flex;
-//   justify-content: left;
-// }
-
-.button {
+.login-wrapper {
+  background: linear-gradient(to right, #2c3e50, #3498db);
+  height: 100%;
   display: flex;
-  margin-top: 15px;
-  margin-right: 30px;
+  align-items: center;
   justify-content: center;
 }
 
-.login-wrapper {
-  background: #2b4b6b;
-  height: 100%;
+.login-box {
+  width: 420px;
+  min-height: 440px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  position: relative;
+  box-shadow: 0 15px 25px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 30px rgba(0, 0, 0, 0.2);
+  }
+}
+
+.login-form {
+  position: relative;
+  width: 100%;
+  padding: 0 20px;
+  box-sizing: border-box;
+  margin-top: 80px;
+}
+
+.login-title {
+  text-align: center;
+  font-size: 24px;
+  color: #2c3e50;
+  margin-bottom: 30px;
+  font-weight: 500;
 }
 
 .login-avatar {
-  height: 130px;
-  width: 130px;
-  border: 1px solid #eee;
+  height: 100px;
+  width: 100px;
   border-radius: 50%;
-  padding: 10px;
-  box-shadow: 0 0 10px #ddd;
+  padding: 5px;
+  background: white;
   position: absolute;
   left: 50%;
   transform: translate(-50%, -50%);
-  background-color: #fff;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  z-index: 1;
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translate(-50%, -52%);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  }
+
   img {
     height: 100%;
     width: 100%;
     border-radius: 50%;
-    background-color: #eee;
+    object-fit: cover;
   }
 }
 
-.title {
-  color: #fff;
+.button {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 25px;
+
+  .el-button {
+    width: 45%;
+    border-radius: 20px;
+    padding: 12px 20px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  .login-btn {
+    background: linear-gradient(to right, #4facfe, #00f2fe);
+    border: none;
+
+    &:hover {
+      background: linear-gradient(to right, #00f2fe, #4facfe);
+    }
+  }
+
+  .register-btn {
+    background: #f5f7fa;
+    color: #909399;
+    border: none;
+
+    &:hover {
+      background: #e4e7ed;
+      color: #606266;
+    }
+  }
 }
 
-.login-box {
-  width: 550px;
-  height: 320px;
-  background-color: #fff;
-  border-radius: 3px;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+:deep(.el-input__inner) {
+  border-radius: 20px;
+  padding-left: 15px;
+  height: 40px;
+  border: 1px solid #dcdfe6;
+  transition: all 0.3s ease;
+
+  &:focus {
+    border-color: #4facfe;
+    box-shadow: 0 0 8px rgba(79, 172, 254, 0.2);
+  }
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 20px;
 }
 </style>
