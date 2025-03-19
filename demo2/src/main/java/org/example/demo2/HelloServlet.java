@@ -2,6 +2,8 @@ package org.example.demo2;
 
 import java.io.*;
 
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.*;
 import jakarta.servlet.annotation.*;
 
