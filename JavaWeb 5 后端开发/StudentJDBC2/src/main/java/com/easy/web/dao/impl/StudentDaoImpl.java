@@ -135,4 +135,62 @@ public class StudentDaoImpl implements IStudentDao {
             throwables.printStackTrace();
         }
     }
+
+    @Override
+    public List<Student> selectPage(int offset, int pageSize) {
+        Connection connection = null;
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        List<Student> studentList = new ArrayList<>();
+        try {
+            connection = JDBCUtil.getConnection();
+            String sql = "SELECT * FROM student ORDER BY id ASC LIMIT ?,?";
+            //预编译
+            preparedStatement = connection.prepareStatement(sql);
+            preparedStatement.setInt(1, offset);
+            preparedStatement.setInt(2, pageSize);
+            System.out.println(preparedStatement);
+            resultSet = preparedStatement.executeQuery();
+            while (resultSet.next()) {//判断下一个有没有，如果返回true而且指向下一个，没有返回false
+                int id = resultSet.getInt("id");
+                String name = resultSet.getString("name");
+                int age = resultSet.getInt("age");
+                String gender = resultSet.getString("gender");
+                Student student = new Student(id, name, age, gender);
+                studentList.add(student);
+            }
+            for (Student student : studentList) {
+                System.out.println(student);
+            }
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        } finally {
+            JDBCUtil.close(connection, preparedStatement, resultSet);
+        }
+        return studentList;
+    }
+
+    @Override
+    public int selectTotalCount() {
+        Connection connection = null;
+        PreparedStatement preparedStatement = null;
+        ResultSet resultSet = null;
+        int totalCount = 0;
+        try {
+            connection = JDBCUtil.getConnection();
+            String sql = "select count(*) from student";
+            preparedStatement = connection.prepareStatement(sql);
+            System.out.println(preparedStatement);
+            resultSet = preparedStatement.executeQuery();
+            if(resultSet.next()) {
+                totalCount = resultSet.getInt(1);
+                System.out.println("totalCount:" + totalCount);
+            }
+        } catch (SQLException throwables) {
+            throwables.printStackTrace();
+        } finally {
+            JDBCUtil.close(connection, preparedStatement, null);
+        }
+        return totalCount;
+    }
 }

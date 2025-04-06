@@ -11,4 +11,8 @@ public interface IStudentDao {
     void add(Student student);
     void update(Student student);
     Student toUpdate(String id);
+
+    List<Student> selectPage(int offset, int pageSize);
+
+    int selectTotalCount();
 }

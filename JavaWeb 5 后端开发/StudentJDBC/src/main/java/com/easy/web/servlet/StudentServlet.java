@@ -76,7 +76,7 @@ public class StudentServlet extends HttpServlet {
             throwables.printStackTrace();
         }
 
-        resp.sendRedirect("/StudentJDBC/student");
+        resp.sendRedirect(req.getContextPath() + "/student");
     }
 
     private void toUpdate(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
@@ -166,6 +166,7 @@ public class StudentServlet extends HttpServlet {
         resp.sendRedirect(req.getContextPath() + "/student?method=selectAll");
     }
 
+    // 单页面展示所有数据
     private void selectAll(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         Connection connection = null;
         PreparedStatement preparedStatement = null;

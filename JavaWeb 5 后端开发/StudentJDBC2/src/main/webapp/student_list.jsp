@@ -52,7 +52,8 @@
   function deleteById(id) {
     var isDelete = confirm('您确认要删除？');
     if (isDelete) {
-      location.href = '/StudentJDBC2/student?method=deleteById&id=' + id;
+      const baseUrl = '${pageContext.request.contextPath}/student?method=deleteById';
+      location.href = baseUrl + '&id=' + id;
     }
   }
 </script>

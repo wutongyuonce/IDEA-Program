@@ -1,8 +1,11 @@
 package com.easy.web.servlet;
 
+import com.easy.web.PageInfo;
 import com.easy.web.dao.IStudentDao;
 import com.easy.web.dao.impl.StudentDaoImpl;
 import com.easy.web.pojo.Student;
+import com.easy.web.service.IStudentService;
+import com.easy.web.service.impl.StudentServiceImpl;
 import com.easy.web.util.JDBCUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -17,27 +20,30 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
-//http://localhost:8080/StudentJDBC/student
+//http://localhost:8080/StudentJDBC2/student
 @WebServlet("/student")
 public class StudentServlet extends HttpServlet {
-    private IStudentDao studentDao = new StudentDaoImpl();
+    private IStudentService studentService = new StudentServiceImpl();
 
     //默认访问service
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        //System.out.println("StudentServlet.service");
+        System.out.println("StudentServlet.service");
         //解决post请求乱码问题
         req.setCharacterEncoding("UTF-8");
 
-        // http://localhost:8080/StudentJDBC/student?method=selectAll
-        // http://localhost:8080/StudentJDBC/student?method=deleteById&id=2
+        // http://localhost:8080/StudentJDBC2/student?method=selectAll
+        // http://localhost:8080/StudentJDBC2/student?method=deleteById&id=2
         String method = req.getParameter("method");
         if (method == null || method.equals("")) {
-            method = "selectAll";
+            method = "selectByPage";
         }
         switch (method) {
             case "selectAll":
                 selectAll(req, resp);
+                break;
+            case "selectByPage":
+                selectByPage(req, resp);
                 break;
             case "deleteById":
                 deleteById(req, resp);
@@ -54,6 +60,24 @@ public class StudentServlet extends HttpServlet {
         }
     }
 
+    // 分页展示数据
+    // http://localhost:8080/StudentJDBC2/student?method=selectByPage&pageNo=?&pageSize=?
+    private void selectByPage(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        System.out.println("StudentServlet.selectByPage");
+        String pageNo = req.getParameter("pageNo");
+        String pageSize = req.getParameter("pageSize");
+        if(pageNo == null || pageNo.equals("")) {
+            pageNo = "1";
+        }
+        if(pageSize == null || pageSize.equals("")) {
+            pageSize = "5";
+        }
+        PageInfo pageInfo = studentService.selectByPage(Integer.parseInt(pageNo),Integer.parseInt(pageSize));
+
+        req.setAttribute("pageInfo", pageInfo);
+        req.getRequestDispatcher("/student_list2.jsp").forward(req,resp);
+    }
+
     private void update(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         System.out.println("StudentServlet.update");
         String id = req.getParameter("id");
@@ -61,15 +85,15 @@ public class StudentServlet extends HttpServlet {
         String age = req.getParameter("age");
         String gender = req.getParameter("gender");
         // 修改学生信息需要提供id来执行SQL语句，因此使用需要四个参数的构造方法
-        studentDao.update(new Student(Integer.parseInt(id), name, Integer.parseInt(age), gender));
+        studentService.update(new Student(Integer.parseInt(id), name, Integer.parseInt(age), gender));
 
-        resp.sendRedirect("/StudentJDBC2/student");
+        resp.sendRedirect(req.getContextPath() + "/student");
     }
 
     private void toUpdate(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         System.out.println("StudentServlet.toUpdate");
         String id = req.getParameter("id");
-        Student student = studentDao.toUpdate(id);
+        Student student = studentService.toUpdate(id);
 
         //把list数据放到req里面
         req.setAttribute("student", student);
@@ -83,24 +107,25 @@ public class StudentServlet extends HttpServlet {
         String name = req.getParameter("name");
         String age = req.getParameter("age");
         String gender = req.getParameter("gender");
-        studentDao.add(new Student(Integer.parseInt(id), name, Integer.parseInt(age), gender));
+        studentService.add(new Student(Integer.parseInt(id), name, Integer.parseInt(age), gender));
 
-        resp.sendRedirect(req.getContextPath() + "/student?method=selectAll");
+        resp.sendRedirect(req.getContextPath() + "/student?method=selectByPage");
     }
 
     private void deleteById(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         System.out.println("StudentServlet.deleteById");
         String id = req.getParameter("id");
 
-        studentDao.deleteById(Integer.parseInt(id));
+        studentService.deleteById(Integer.parseInt(id));
         // /student   302
         // 重定向
-        resp.sendRedirect(req.getContextPath() + "/student?method=selectAll");
+        resp.sendRedirect(req.getContextPath() + "/student?method=selectByPage");
     }
 
+    // 单页面展示所有数据
     private void selectAll(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         System.out.println("StudentServlet.selectAll");
-        List<Student> list = studentDao.selectAll();
+        List<Student> list = studentService.selectAll();
 
         //把list数据放到req里面
         req.setAttribute("list", list);
