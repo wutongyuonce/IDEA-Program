@@ -1,4 +1,4 @@
-package com.easy.web.servlet;
+package com.easy.web.controller;
 
 import com.easy.web.dao.IStudentDao;
 import com.easy.web.dao.impl.StudentDaoImpl;

@@ -1,12 +1,9 @@
-package com.easy.web.servlet;
+package com.easy.web.controller;
 
 import com.easy.web.PageInfo;
-import com.easy.web.dao.IStudentDao;
-import com.easy.web.dao.impl.StudentDaoImpl;
 import com.easy.web.pojo.Student;
 import com.easy.web.service.IStudentService;
 import com.easy.web.service.impl.StudentServiceImpl;
-import com.easy.web.util.JDBCUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -14,10 +11,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.List;
 
 //http://localhost:8080/StudentJDBC2/student
@@ -29,8 +22,8 @@ public class StudentServlet extends HttpServlet {
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         System.out.println("StudentServlet.service");
-        //解决post请求乱码问题
-        req.setCharacterEncoding("UTF-8");
+        //解决post请求乱码问题，已通过过滤器实现
+        //req.setCharacterEncoding("UTF-8");
 
         // http://localhost:8080/StudentJDBC2/student?method=selectAll
         // http://localhost:8080/StudentJDBC2/student?method=deleteById&id=2
