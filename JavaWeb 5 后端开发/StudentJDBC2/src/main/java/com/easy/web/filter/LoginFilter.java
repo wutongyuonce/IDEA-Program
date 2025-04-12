@@ -21,17 +21,35 @@ public class LoginFilter implements Filter {
     }
 
     @Override
-    public void doFilter(ServletRequest req, ServletResponse resp, FilterChain
-            chain)
-            throws IOException, ServletException {
-        // 1.获取HttpServletRequest与HttpServletRespson
+    public void doFilter(ServletRequest req, ServletResponse resp, FilterChain chain) throws IOException, ServletException {
+        // 1.获取HttpServletRequest与HttpServletResponse
         HttpServletRequest request = (HttpServletRequest) req;
         HttpServletResponse response = (HttpServletResponse) resp;
-        // 2.获取Session对象
+
+        // 2.login请求和一些静态资源不需要判断是否已经登陆
+        String contextPath = request.getContextPath();
+        String uri = request.getRequestURI();
+        String path = uri.substring(contextPath.length());
+
+        System.out.println("path: " + path);
+        // path：/login.jsp
+        // path：/static/layui/layui.js
+        // path: /user?method=login
+        String method = request.getParameter("method");
+        // 注意空指针null，切换比较顺序来解决
+        if(path.startsWith("/static")
+                || path.equals("/login.jsp")
+                || path.equals("/fail.jsp")
+                || path.equals("/user") && "login".equals(method)) {
+            chain.doFilter(req, resp);
+            return;
+        }
+
+        // 3.获取Session对象
         HttpSession session = request.getSession();
-        // 3.从Session对象获取登录信息(一般情况下为用户对象)
+        // 4.从Session对象获取登录信息(一般情况下为用户对象)
         User user = (User) session.getAttribute("user");
-        // 4.判断登录信息对象是否为null
+        // 5.判断登录信息对象是否为null
         if (user == null) {
             // 未登录
             // 响应重定向到登录页面

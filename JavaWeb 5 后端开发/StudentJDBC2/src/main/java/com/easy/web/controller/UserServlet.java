@@ -24,11 +24,30 @@ public class UserServlet extends HttpServlet {
 //        }
 
         String method = req.getParameter("method");
+        if (method == null || method.equals("")) {
+            method = "update";
+        }
         switch (method) {
             case "login":
                 login(req, resp);
                 break;
+            case "logout":
+                logout(req, resp);
+                break;
+            case "update":
+                update(req, resp);
+                break;
         }
+    }
+
+    private void update(HttpServletRequest req, HttpServletResponse resp) {
+    }
+
+    private void logout(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+        System.out.println("UserServlet.logout");
+        HttpSession session = req.getSession();
+        session.removeAttribute("user");
+        resp.sendRedirect(req.getContextPath() + "/login.jsp");
     }
 
     private void login(HttpServletRequest req, HttpServletResponse resp) throws IOException {
@@ -40,7 +59,7 @@ public class UserServlet extends HttpServlet {
 
         // 如果用户提交了表单，直接验证新账号密码
         if (name != null && !name.isEmpty() && password != null && !password.isEmpty()) {
-            System.out.println("表单提交的账号密码: " + name + "," + password);
+            System.out.println("表单提交的账号密码: " + name + ";" + password);
             login2(req, resp, name, password);
             return;
         }
