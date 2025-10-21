@@ -5,21 +5,20 @@
     <title>Title</title>
 </head>
 <body>
+<input type="text" id="inputId" value="Hello"> <br>
+<input type="button" value="点我" onclick="clickMe()">
 
-<div>登陆我们的网站</div>
-<hr>
-<div>
-    <label>
-        账号：
-        <input type="text">
-    </label>
-</div>
-<div>
-    <label>
-        密码：
-        <input type="password">
-    </label>
-</div>
+<script>
+    function clickMe() {
+        //console.log('clickMe');
+        var array = document.getElementsByTagName('input');
+        console.log(array);
+        console.log(array[0]);
+        console.log(array[0].value);
 
+        //var inputObj = document.getElementById('inputId');
+        //console.log(inputObj.value);
+    }
+</script>
 </body>
 </html>
