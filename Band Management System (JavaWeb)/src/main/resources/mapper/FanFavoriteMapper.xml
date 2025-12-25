@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.FanFavoriteMapper">
+
+    <!-- ==================== 乐队喜好 ==================== -->
+    
+    <!-- 添加喜欢的乐队 -->
+    <insert id="insertFavoriteBand">
+        INSERT INTO FanFavoriteBand (fan_id, band_id)
+        VALUES (#{fanId}, #{bandId})
+    </insert>
+
+    <!-- 取消喜欢的乐队 -->
+    <delete id="deleteFavoriteBand">
+        DELETE FROM FanFavoriteBand 
+        WHERE fan_id = #{fanId} AND band_id = #{bandId}
+    </delete>
+
+    <!-- 查询歌迷喜欢的乐队列表 -->
+    <select id="selectFavoriteBands" resultType="com.band.management.entity.Band">
+        SELECT b.band_id, b.name, b.founded_at, b.intro, b.leader_member_id, b.member_count, b.created_at, b.updated_at
+        FROM Band b
+        INNER JOIN FanFavoriteBand ffb ON b.band_id = ffb.band_id
+        WHERE ffb.fan_id = #{fanId}
+        ORDER BY ffb.created_at DESC
+    </select>
+
+    <!-- 检查是否喜欢该乐队 -->
+    <select id="checkFavoriteBand" resultType="int">
+        SELECT COUNT(*)
+        FROM FanFavoriteBand
+        WHERE fan_id = #{fanId} AND band_id = #{bandId}
+    </select>
+
+    <!-- ==================== 专辑喜好 ==================== -->
+    
+    <!-- 添加喜欢的专辑 -->
+    <insert id="insertFavoriteAlbum">
+        INSERT INTO FanFavoriteAlbum (fan_id, album_id)
+        VALUES (#{fanId}, #{albumId})
+    </insert>
+
+    <!-- 取消喜欢的专辑 -->
+    <delete id="deleteFavoriteAlbum">
+        DELETE FROM FanFavoriteAlbum 
+        WHERE fan_id = #{fanId} AND album_id = #{albumId}
+    </delete>
+
+    <!-- 查询歌迷喜欢的专辑列表 -->
+    <select id="selectFavoriteAlbums" resultType="com.band.management.entity.Album">
+        SELECT 
+            a.album_id, a.band_id, a.title, a.release_date, a.copywriting, a.avg_score, a.created_at, a.updated_at,
+            b.name AS band_name
+        FROM Album a
+        INNER JOIN FanFavoriteAlbum ffa ON a.album_id = ffa.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        WHERE ffa.fan_id = #{fanId}
+        ORDER BY ffa.created_at DESC
+    </select>
+
+    <!-- 检查是否喜欢该专辑 -->
+    <select id="checkFavoriteAlbum" resultType="int">
+        SELECT COUNT(*)
+        FROM FanFavoriteAlbum
+        WHERE fan_id = #{fanId} AND album_id = #{albumId}
+    </select>
+
+    <!-- ==================== 歌曲喜好 ==================== -->
+    
+    <!-- 添加喜欢的歌曲 -->
+    <insert id="insertFavoriteSong">
+        INSERT INTO FanFavoriteSong (fan_id, song_id)
+        VALUES (#{fanId}, #{songId})
+    </insert>
+
+    <!-- 取消喜欢的歌曲 -->
+    <delete id="deleteFavoriteSong">
+        DELETE FROM FanFavoriteSong 
+        WHERE fan_id = #{fanId} AND song_id = #{songId}
+    </delete>
+
+    <!-- 查询歌迷喜欢的歌曲列表 -->
+    <select id="selectFavoriteSongs" resultType="com.band.management.entity.Song">
+        SELECT 
+            s.song_id, s.album_id, s.title, s.lyricist, s.composer, s.created_at, s.updated_at,
+            a.title AS album_title,
+            b.name AS band_name
+        FROM Song s
+        INNER JOIN FanFavoriteSong ffs ON s.song_id = ffs.song_id
+        LEFT JOIN Album a ON s.album_id = a.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        WHERE ffs.fan_id = #{fanId}
+        ORDER BY ffs.created_at DESC
+    </select>
+
+    <!-- 检查是否喜欢该歌曲 -->
+    <select id="checkFavoriteSong" resultType="int">
+        SELECT COUNT(*)
+        FROM FanFavoriteSong
+        WHERE fan_id = #{fanId} AND song_id = #{songId}
+    </select>
+
+    <!-- 统计关注某乐队的歌迷数量 -->
+    <select id="countFansByBandId" resultType="int">
+        SELECT COUNT(*)
+        FROM FanFavoriteBand
+        WHERE band_id = #{bandId}
+    </select>
+
+    <!-- 查询关注某乐队的歌迷列表 -->
+    <select id="selectFansByBandId" resultType="com.band.management.entity.Fan">
+        SELECT f.fan_id, f.name, f.gender, f.age, f.occupation, f.education, f.created_at, f.updated_at
+        FROM Fan f
+        INNER JOIN FanFavoriteBand ffb ON f.fan_id = ffb.fan_id
+        WHERE ffb.band_id = #{bandId}
+        ORDER BY ffb.created_at DESC
+    </select>
+
+    <!-- 统计喜欢某乐队专辑的歌迷数量（按专辑分组） -->
+    <select id="countFansByAlbums" resultType="java.util.HashMap">
+        SELECT 
+            a.album_id AS albumId,
+            a.title AS albumTitle,
+            COUNT(DISTINCT ffa.fan_id) AS fanCount
+        FROM Album a
+        LEFT JOIN FanFavoriteAlbum ffa ON a.album_id = ffa.album_id
+        WHERE a.band_id = #{bandId}
+        GROUP BY a.album_id, a.title
+        ORDER BY a.release_date DESC
+    </select>
+
+    <!-- 统计喜欢某乐队歌曲的歌迷数量（按歌曲分组） -->
+    <select id="countFansBySongs" resultType="java.util.HashMap">
+        SELECT 
+            s.song_id AS songId,
+            s.title AS songTitle,
+            a.title AS albumTitle,
+            COUNT(DISTINCT ffs.fan_id) AS fanCount
+        FROM Song s
+        INNER JOIN Album a ON s.album_id = a.album_id
+        LEFT JOIN FanFavoriteSong ffs ON s.song_id = ffs.song_id
+        WHERE a.band_id = #{bandId}
+        GROUP BY s.song_id, s.title, a.title
+        ORDER BY a.release_date DESC, s.song_id ASC
+    </select>
+
+    <!-- 查询喜欢某专辑的歌迷ID列表 -->
+    <select id="selectFanIdsByAlbumId" resultType="java.lang.Long">
+        SELECT DISTINCT fan_id
+        FROM FanFavoriteAlbum
+        WHERE album_id = #{albumId}
+    </select>
+
+    <!-- 查询喜欢某歌曲的歌迷ID列表 -->
+    <select id="selectFanIdsBySongId" resultType="java.lang.Long">
+        SELECT DISTINCT fan_id
+        FROM FanFavoriteSong
+        WHERE song_id = #{songId}
+    </select>
+
+</mapper>

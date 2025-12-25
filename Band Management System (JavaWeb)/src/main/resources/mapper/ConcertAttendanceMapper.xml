@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.ConcertAttendanceMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.ConcertAttendance">
+        <result column="fan_id" property="fanId" jdbcType="BIGINT"/>
+        <result column="concert_id" property="concertId" jdbcType="BIGINT"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <!-- 插入参与记录 -->
+    <insert id="insert" parameterType="com.band.management.entity.ConcertAttendance">
+        INSERT INTO ConcertAttendance (fan_id, concert_id)
+        VALUES (#{fanId}, #{concertId})
+    </insert>
+
+    <!-- 删除参与记录 -->
+    <delete id="delete">
+        DELETE FROM ConcertAttendance 
+        WHERE fan_id = #{fanId} AND concert_id = #{concertId}
+    </delete>
+
+    <!-- 根据歌迷ID查询参与的演唱会列表 -->
+    <select id="selectByFanId" resultType="com.band.management.entity.Concert">
+        SELECT 
+            c.concert_id, c.band_id, c.title, c.event_time, c.location, c.created_at, c.updated_at,
+            b.name AS band_name
+        FROM Concert c
+        INNER JOIN ConcertAttendance ca ON c.concert_id = ca.concert_id
+        LEFT JOIN Band b ON c.band_id = b.band_id
+        WHERE ca.fan_id = #{fanId}
+        ORDER BY c.event_time DESC
+    </select>
+
+    <!-- 根据演唱会ID查询参与的歌迷列表 -->
+    <select id="selectByConcertId" resultMap="BaseResultMap">
+        SELECT fan_id, concert_id, created_at
+        FROM ConcertAttendance
+        WHERE concert_id = #{concertId}
+        ORDER BY created_at DESC
+    </select>
+
+    <!-- 检查是否参加该演唱会 -->
+    <select id="checkAttendance" resultType="int">
+        SELECT COUNT(*)
+        FROM ConcertAttendance
+        WHERE fan_id = #{fanId} AND concert_id = #{concertId}
+    </select>
+
+    <!-- 统计演唱会参与人数 -->
+    <select id="countByConcertId" resultType="int">
+        SELECT COUNT(*)
+        FROM ConcertAttendance
+        WHERE concert_id = #{concertId}
+    </select>
+
+</mapper>

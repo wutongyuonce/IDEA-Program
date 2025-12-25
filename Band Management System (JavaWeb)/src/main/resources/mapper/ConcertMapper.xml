@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.ConcertMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.Concert">
+        <id column="concert_id" property="concertId" jdbcType="BIGINT"/>
+        <result column="band_id" property="bandId" jdbcType="BIGINT"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="event_time" property="eventTime" jdbcType="TIMESTAMP"/>
+        <result column="location" property="location" jdbcType="VARCHAR"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        concert_id, band_id, title, event_time, location, created_at, updated_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.Concert" useGeneratedKeys="true" keyProperty="concertId">
+        INSERT INTO Concert (band_id, title, event_time, location)
+        VALUES (#{bandId}, #{title}, #{eventTime}, #{location})
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM Concert WHERE concert_id = #{concertId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.Concert">
+        UPDATE Concert
+        <set>
+            <if test="bandId != null">band_id = #{bandId},</if>
+            <if test="title != null and title != ''">title = #{title},</if>
+            <if test="eventTime != null">event_time = #{eventTime},</if>
+            <if test="location != null and location != ''">location = #{location},</if>
+        </set>
+        WHERE concert_id = #{concertId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Concert
+        WHERE concert_id = #{concertId}
+    </select>
+
+    <!-- 查询所有 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT 
+            c.concert_id, c.band_id, c.title, c.event_time, c.location, c.created_at, c.updated_at,
+            b.name AS band_name
+        FROM Concert c
+        LEFT JOIN Band b ON c.band_id = b.band_id
+        ORDER BY c.event_time DESC
+    </select>
+
+    <!-- 根据乐队ID查询 -->
+    <select id="selectByBandId" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Concert
+        WHERE band_id = #{bandId}
+        ORDER BY event_time DESC
+    </select>
+
+    <!-- 条件查询 -->
+    <select id="selectByCondition" parameterType="com.band.management.entity.Concert" resultMap="BaseResultMap">
+        SELECT 
+            c.concert_id, c.band_id, c.title, c.event_time, c.location, c.created_at, c.updated_at,
+            b.name AS band_name
+        FROM Concert c
+        LEFT JOIN Band b ON c.band_id = b.band_id
+        <where>
+            <if test="bandId != null">
+                AND c.band_id = #{bandId}
+            </if>
+            <if test="title != null and title != ''">
+                AND c.title LIKE CONCAT('%', #{title}, '%')
+            </if>
+            <if test="location != null and location != ''">
+                AND c.location LIKE CONCAT('%', #{location}, '%')
+            </if>
+        </where>
+        ORDER BY c.event_time DESC
+    </select>
+
+    <!-- 统计数量 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM Concert
+    </select>
+
+    <!-- 条件统计 -->
+    <select id="countByCondition" parameterType="com.band.management.entity.Concert" resultType="int">
+        SELECT COUNT(*)
+        FROM Concert
+        <where>
+            <if test="bandId != null">
+                AND band_id = #{bandId}
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+            <if test="location != null and location != ''">
+                AND location LIKE CONCAT('%', #{location}, '%')
+            </if>
+        </where>
+    </select>
+
+    <!-- 查询乐队最新演唱会 -->
+    <select id="selectRecentByBandId" resultMap="BaseResultMap">
+        SELECT 
+            c.concert_id, c.band_id, c.title, c.location, c.event_time,
+            c.created_at, c.updated_at,
+            b.name AS band_name
+        FROM Concert c
+        LEFT JOIN Band b ON c.band_id = b.band_id
+        WHERE c.band_id = #{bandId}
+        ORDER BY c.event_time DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

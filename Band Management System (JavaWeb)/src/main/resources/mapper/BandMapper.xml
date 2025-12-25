@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.BandMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.Band">
+        <id column="band_id" property="bandId" jdbcType="BIGINT"/>
+        <result column="name" property="name" jdbcType="VARCHAR"/>
+        <result column="founded_at" property="foundedAt" jdbcType="DATE"/>
+        <result column="intro" property="intro" jdbcType="VARCHAR"/>
+        <result column="leader_member_id" property="leaderMemberId" jdbcType="BIGINT"/>
+        <result column="member_count" property="memberCount" jdbcType="INTEGER"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+        <result column="leader_name" property="leaderName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        band_id, name, founded_at, intro, leader_member_id, member_count, created_at, updated_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.Band" useGeneratedKeys="true" keyProperty="bandId">
+        INSERT INTO Band (name, founded_at, intro, leader_member_id, member_count)
+        VALUES (#{name}, #{foundedAt}, #{intro}, #{leaderMemberId}, COALESCE(#{memberCount}, 0))
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM Band WHERE band_id = #{bandId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.Band">
+        UPDATE Band
+        <set>
+            <if test="name != null and name != ''">name = #{name},</if>
+            <if test="foundedAt != null">founded_at = #{foundedAt},</if>
+            <if test="intro != null">intro = #{intro},</if>
+            <!-- 支持将队长设置为null（清除队长） -->
+            leader_member_id = #{leaderMemberId},
+            <if test="memberCount != null">member_count = #{memberCount},</if>
+        </set>
+        WHERE band_id = #{bandId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Band
+        WHERE band_id = #{bandId}
+    </select>
+
+    <!-- 查询所有 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT 
+            b.band_id, b.name, b.founded_at, b.intro, b.leader_member_id,
+            (SELECT COUNT(*) FROM Member m WHERE m.band_id = b.band_id AND m.leave_date IS NULL) AS member_count,
+            b.created_at, b.updated_at,
+            m.name AS leader_name
+        FROM Band b
+        LEFT JOIN Member m ON b.leader_member_id = m.member_id
+        ORDER BY b.band_id DESC
+    </select>
+
+    <!-- 根据名称查询 -->
+    <select id="selectByName" parameterType="string" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Band
+        WHERE name = #{name}
+    </select>
+
+    <!-- 条件查询 -->
+    <select id="selectByCondition" parameterType="com.band.management.entity.Band" resultMap="BaseResultMap">
+        SELECT 
+            b.band_id, b.name, b.founded_at, b.intro, b.leader_member_id,
+            (SELECT COUNT(*) FROM Member m WHERE m.band_id = b.band_id AND m.leave_date IS NULL) AS member_count,
+            b.created_at, b.updated_at,
+            m.name AS leader_name
+        FROM Band b
+        LEFT JOIN Member m ON b.leader_member_id = m.member_id
+        <where>
+            <if test="name != null and name != ''">
+                AND b.name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="foundedAt != null">
+                AND b.founded_at = #{foundedAt}
+            </if>
+        </where>
+        ORDER BY b.band_id DESC
+    </select>
+
+    <!-- 统计数量 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM Band
+    </select>
+
+    <!-- 条件统计 -->
+    <select id="countByCondition" parameterType="com.band.management.entity.Band" resultType="int">
+        SELECT COUNT(*)
+        FROM Band
+        <where>
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="foundedAt != null">
+                AND founded_at = #{foundedAt}
+            </if>
+        </where>
+    </select>
+
+    <!-- 查询未关注的乐队，按关注人数降序排序 -->
+    <select id="selectUnfollowedBandsByFanCount" resultMap="BaseResultMap">
+        SELECT 
+            b.band_id,
+            b.name,
+            b.founded_at,
+            b.member_count,
+            b.intro,
+            b.created_at,
+            b.updated_at,
+            COUNT(DISTINCT ffb.fan_id) AS fan_count
+        FROM Band b
+        LEFT JOIN FanFavoriteBand ffb ON b.band_id = ffb.band_id
+        WHERE b.band_id NOT IN (
+            SELECT band_id 
+            FROM FanFavoriteBand 
+            WHERE fan_id = #{fanId}
+        )
+        GROUP BY b.band_id, b.name, b.founded_at, b.member_count, b.intro, b.created_at, b.updated_at
+        ORDER BY fan_count DESC, b.band_id ASC
+    </select>
+
+</mapper>

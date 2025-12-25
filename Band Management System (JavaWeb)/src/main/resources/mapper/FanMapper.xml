@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.FanMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.Fan">
+        <id column="fan_id" property="fanId" jdbcType="BIGINT"/>
+        <result column="name" property="name" jdbcType="VARCHAR"/>
+        <result column="gender" property="gender" jdbcType="CHAR"/>
+        <result column="age" property="age" jdbcType="INTEGER"/>
+        <result column="occupation" property="occupation" jdbcType="VARCHAR"/>
+        <result column="education" property="education" jdbcType="VARCHAR"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        fan_id, name, gender, age, occupation, education, created_at, updated_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.Fan" useGeneratedKeys="true" keyProperty="fanId">
+        INSERT INTO Fan (name, gender, age, occupation, education)
+        VALUES (#{name}, #{gender}, #{age}, #{occupation}, #{education})
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM Fan WHERE fan_id = #{fanId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.Fan">
+        UPDATE Fan
+        <set>
+            <if test="name != null and name != ''">name = #{name},</if>
+            <if test="gender != null and gender != ''">gender = #{gender},</if>
+            <if test="age != null">age = #{age},</if>
+            <if test="occupation != null">occupation = #{occupation},</if>
+            <if test="education != null">education = #{education},</if>
+        </set>
+        WHERE fan_id = #{fanId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Fan
+        WHERE fan_id = #{fanId}
+    </select>
+
+    <!-- 查询所有 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Fan
+        ORDER BY fan_id DESC
+    </select>
+
+    <!-- 条件查询 -->
+    <select id="selectByCondition" parameterType="com.band.management.entity.Fan" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Fan
+        <where>
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="gender != null and gender != ''">
+                AND gender = #{gender}
+            </if>
+            <if test="age != null">
+                AND age = #{age}
+            </if>
+            <if test="occupation != null and occupation != ''">
+                AND occupation LIKE CONCAT('%', #{occupation}, '%')
+            </if>
+            <if test="education != null and education != ''">
+                AND education = #{education}
+            </if>
+        </where>
+        ORDER BY fan_id DESC
+    </select>
+
+    <!-- 统计数量 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM Fan
+    </select>
+
+    <!-- 条件统计 -->
+    <select id="countByCondition" parameterType="com.band.management.entity.Fan" resultType="int">
+        SELECT COUNT(*)
+        FROM Fan
+        <where>
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="gender != null and gender != ''">
+                AND gender = #{gender}
+            </if>
+            <if test="age != null">
+                AND age = #{age}
+            </if>
+            <if test="occupation != null and occupation != ''">
+                AND occupation LIKE CONCAT('%', #{occupation}, '%')
+            </if>
+            <if test="education != null and education != ''">
+                AND education = #{education}
+            </if>
+        </where>
+    </select>
+
+</mapper>

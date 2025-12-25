@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.UserMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.User">
+        <id column="user_id" property="userId" jdbcType="BIGINT"/>
+        <result column="username" property="username" jdbcType="VARCHAR"/>
+        <result column="password" property="password" jdbcType="VARCHAR"/>
+        <result column="role" property="role" jdbcType="VARCHAR"/>
+        <result column="related_id" property="relatedId" jdbcType="BIGINT"/>
+        <result column="status" property="status" jdbcType="TINYINT"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        user_id, username, password, role, related_id, status, created_at, updated_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.User" useGeneratedKeys="true" keyProperty="userId">
+        INSERT INTO User (username, password, role, related_id, status)
+        VALUES (#{username}, #{password}, #{role}, #{relatedId}, #{status})
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM User WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.User">
+        UPDATE User
+        <set>
+            <if test="username != null and username != ''">username = #{username},</if>
+            <if test="password != null and password != ''">password = #{password},</if>
+            <if test="role != null and role != ''">role = #{role},</if>
+            <if test="relatedId != null">related_id = #{relatedId},</if>
+            <if test="status != null">status = #{status},</if>
+        </set>
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM User
+        WHERE user_id = #{userId}
+    </select>
+
+    <!-- 根据用户名查询 -->
+    <select id="selectByUsername" parameterType="string" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM User
+        WHERE username = #{username}
+    </select>
+
+    <!-- 根据用户名和角色查询 -->
+    <select id="selectByUsernameAndRole" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM User
+        WHERE username = #{username} AND role = #{role}
+    </select>
+
+    <!-- 根据角色和关联ID查询 -->
+    <select id="selectByRoleAndRelatedId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM User
+        WHERE role = #{role} AND related_id = #{relatedId}
+    </select>
+
+    <!-- 根据角色和关联ID删除 -->
+    <delete id="deleteByRoleAndRelatedId">
+        DELETE FROM User 
+        WHERE role = #{role} AND related_id = #{relatedId}
+    </delete>
+
+</mapper>

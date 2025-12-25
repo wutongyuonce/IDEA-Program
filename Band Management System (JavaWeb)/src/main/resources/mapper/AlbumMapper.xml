@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.AlbumMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.Album">
+        <id column="album_id" property="albumId" jdbcType="BIGINT"/>
+        <result column="band_id" property="bandId" jdbcType="BIGINT"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="release_date" property="releaseDate" jdbcType="DATE"/>
+        <result column="copywriting" property="copywriting" jdbcType="VARCHAR"/>
+        <result column="avg_score" property="avgScore" jdbcType="DECIMAL"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 专辑详情结果映射 -->
+    <resultMap id="DetailResultMap" type="com.band.management.vo.AlbumDetailVO">
+        <id column="album_id" property="albumId" jdbcType="BIGINT"/>
+        <result column="band_id" property="bandId" jdbcType="BIGINT"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="release_date" property="releaseDate" jdbcType="DATE"/>
+        <result column="copywriting" property="copywriting" jdbcType="VARCHAR"/>
+        <result column="avg_score" property="avgScore" jdbcType="DECIMAL"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+        <collection property="songs" ofType="com.band.management.entity.Song">
+            <id column="song_id" property="songId" jdbcType="BIGINT"/>
+            <result column="song_album_id" property="albumId" jdbcType="BIGINT"/>
+            <result column="song_title" property="title" jdbcType="VARCHAR"/>
+            <result column="lyricist" property="lyricist" jdbcType="VARCHAR"/>
+            <result column="composer" property="composer" jdbcType="VARCHAR"/>
+        </collection>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        album_id, band_id, title, release_date, copywriting, avg_score, created_at, updated_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.Album" useGeneratedKeys="true" keyProperty="albumId">
+        INSERT INTO Album (band_id, title, release_date, copywriting, avg_score)
+        VALUES (#{bandId}, #{title}, #{releaseDate}, #{copywriting}, #{avgScore})
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM Album WHERE album_id = #{albumId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.Album">
+        UPDATE Album
+        <set>
+            <if test="bandId != null">band_id = #{bandId},</if>
+            <if test="title != null and title != ''">title = #{title},</if>
+            <if test="releaseDate != null">release_date = #{releaseDate},</if>
+            <if test="copywriting != null">copywriting = #{copywriting},</if>
+            <if test="avgScore != null">avg_score = #{avgScore},</if>
+        </set>
+        WHERE album_id = #{albumId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Album
+        WHERE album_id = #{albumId}
+    </select>
+
+    <!-- 查询所有 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT 
+            a.album_id, a.band_id, a.title, a.release_date, a.copywriting, a.avg_score,
+            a.created_at, a.updated_at,
+            b.name AS band_name
+        FROM Album a
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        ORDER BY a.release_date DESC
+    </select>
+
+    <!-- 根据乐队ID查询 -->
+    <select id="selectByBandId" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Album
+        WHERE band_id = #{bandId}
+        ORDER BY release_date DESC
+    </select>
+
+    <!-- 查询专辑详情（包含歌曲列表） -->
+    <select id="selectDetailById" parameterType="long" resultMap="DetailResultMap">
+        SELECT 
+            a.album_id, a.band_id, a.title, a.release_date, a.copywriting, a.avg_score,
+            b.name AS band_name,
+            s.song_id, s.album_id AS song_album_id, s.title AS song_title, s.lyricist, s.composer
+        FROM Album a
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        LEFT JOIN Song s ON a.album_id = s.album_id
+        WHERE a.album_id = #{albumId}
+        ORDER BY s.song_id ASC
+    </select>
+
+    <!-- 条件查询 -->
+    <select id="selectByCondition" parameterType="com.band.management.entity.Album" resultMap="BaseResultMap">
+        SELECT 
+            a.album_id, a.band_id, a.title, a.release_date, a.copywriting, a.avg_score, 
+            a.created_at, a.updated_at,
+            b.name AS band_name
+        FROM Album a
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        <where>
+            <if test="bandId != null">
+                AND a.band_id = #{bandId}
+            </if>
+            <if test="title != null and title != ''">
+                AND a.title LIKE CONCAT('%', #{title}, '%')
+            </if>
+            <if test="releaseDate != null">
+                AND a.release_date = #{releaseDate}
+            </if>
+        </where>
+        ORDER BY a.release_date DESC
+    </select>
+
+    <!-- 统计数量 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM Album
+    </select>
+
+    <!-- 条件统计 -->
+    <select id="countByCondition" parameterType="com.band.management.entity.Album" resultType="int">
+        SELECT COUNT(*)
+        FROM Album
+        <where>
+            <if test="bandId != null">
+                AND band_id = #{bandId}
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+            <if test="releaseDate != null">
+                AND release_date = #{releaseDate}
+            </if>
+        </where>
+    </select>
+
+    <!-- 查询乐队最新专辑 -->
+    <select id="selectRecentByBandId" resultMap="BaseResultMap">
+        SELECT 
+            a.album_id, a.band_id, a.title, a.release_date, a.copywriting, a.avg_score,
+            a.created_at, a.updated_at,
+            b.name AS band_name
+        FROM Album a
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        WHERE a.band_id = #{bandId}
+        ORDER BY a.release_date DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 查询所有专辑（包含乐队名称） -->
+    <select id="selectAllWithBandName" resultMap="BaseResultMap">
+        SELECT 
+            a.album_id, a.band_id, a.title, a.release_date, a.copywriting, a.avg_score,
+            a.created_at, a.updated_at,
+            b.name AS band_name
+        FROM Album a
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        ORDER BY a.release_date DESC
+    </select>
+
+</mapper>

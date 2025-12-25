@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.AlbumReviewMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.AlbumReview">
+        <id column="review_id" property="reviewId" jdbcType="BIGINT"/>
+        <result column="fan_id" property="fanId" jdbcType="BIGINT"/>
+        <result column="album_id" property="albumId" jdbcType="BIGINT"/>
+        <result column="rating" property="rating" jdbcType="DECIMAL"/>
+        <result column="comment" property="comment" jdbcType="VARCHAR"/>
+        <result column="reviewed_at" property="reviewedAt" jdbcType="TIMESTAMP"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="fan_name" property="fanName" jdbcType="VARCHAR"/>
+        <result column="album_title" property="albumTitle" jdbcType="VARCHAR"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 乐评VO结果映射 -->
+    <resultMap id="ReviewVOResultMap" type="com.band.management.vo.ReviewVO">
+        <id column="review_id" property="reviewId" jdbcType="BIGINT"/>
+        <result column="fan_id" property="fanId" jdbcType="BIGINT"/>
+        <result column="album_id" property="albumId" jdbcType="BIGINT"/>
+        <result column="rating" property="rating" jdbcType="DECIMAL"/>
+        <result column="comment" property="comment" jdbcType="VARCHAR"/>
+        <result column="reviewed_at" property="reviewedAt" jdbcType="TIMESTAMP"/>
+        <result column="fan_name" property="fanName" jdbcType="VARCHAR"/>
+        <result column="album_title" property="albumTitle" jdbcType="VARCHAR"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        review_id, fan_id, album_id, rating, comment, reviewed_at, created_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.AlbumReview" useGeneratedKeys="true" keyProperty="reviewId">
+        INSERT INTO AlbumReview (fan_id, album_id, rating, comment, reviewed_at)
+        VALUES (#{fanId}, #{albumId}, #{rating}, #{comment}, #{reviewedAt})
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM AlbumReview WHERE review_id = #{reviewId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.AlbumReview">
+        UPDATE AlbumReview
+        <set>
+            <if test="rating != null">rating = #{rating},</if>
+            <if test="comment != null">comment = #{comment},</if>
+            <if test="reviewedAt != null">reviewed_at = #{reviewedAt},</if>
+        </set>
+        WHERE review_id = #{reviewId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM AlbumReview
+        WHERE review_id = #{reviewId}
+    </select>
+
+    <!-- 查询所有 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM AlbumReview
+        ORDER BY reviewed_at DESC
+    </select>
+
+    <!-- 根据专辑ID查询乐评列表 -->
+    <select id="selectByAlbumId" parameterType="long" resultMap="ReviewVOResultMap">
+        SELECT 
+            ar.review_id, ar.fan_id, ar.album_id, ar.rating, ar.comment, ar.reviewed_at,
+            f.name AS fan_name,
+            a.title AS album_title,
+            b.name AS band_name
+        FROM AlbumReview ar
+        LEFT JOIN Fan f ON ar.fan_id = f.fan_id
+        LEFT JOIN Album a ON ar.album_id = a.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        WHERE ar.album_id = #{albumId}
+        ORDER BY ar.reviewed_at DESC
+    </select>
+
+    <!-- 根据歌迷ID查询乐评列表 -->
+    <select id="selectByFanId" parameterType="long" resultMap="ReviewVOResultMap">
+        SELECT 
+            ar.review_id, ar.fan_id, ar.album_id, ar.rating, ar.comment, ar.reviewed_at,
+            f.name AS fan_name,
+            a.title AS album_title,
+            b.name AS band_name
+        FROM AlbumReview ar
+        LEFT JOIN Fan f ON ar.fan_id = f.fan_id
+        LEFT JOIN Album a ON ar.album_id = a.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        WHERE ar.fan_id = #{fanId}
+        ORDER BY ar.reviewed_at DESC
+    </select>
+
+    <!-- 根据歌迷ID和专辑ID查询乐评 -->
+    <select id="selectByFanIdAndAlbumId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM AlbumReview
+        WHERE fan_id = #{fanId} AND album_id = #{albumId}
+    </select>
+
+    <!-- 条件查询 -->
+    <select id="selectByCondition" parameterType="com.band.management.entity.AlbumReview" resultMap="BaseResultMap">
+        SELECT 
+            ar.review_id, ar.fan_id, ar.album_id, ar.rating, ar.comment, ar.reviewed_at, ar.created_at,
+            f.name AS fan_name,
+            a.title AS album_title,
+            b.name AS band_name
+        FROM AlbumReview ar
+        LEFT JOIN Fan f ON ar.fan_id = f.fan_id
+        LEFT JOIN Album a ON ar.album_id = a.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        <where>
+            <if test="fanId != null">
+                AND ar.fan_id = #{fanId}
+            </if>
+            <if test="albumId != null">
+                AND ar.album_id = #{albumId}
+            </if>
+            <if test="rating != null">
+                AND ar.rating = #{rating}
+            </if>
+            <if test="fanName != null and fanName != ''">
+                AND f.name LIKE CONCAT('%', #{fanName}, '%')
+            </if>
+            <if test="albumTitle != null and albumTitle != ''">
+                AND a.title LIKE CONCAT('%', #{albumTitle}, '%')
+            </if>
+        </where>
+        ORDER BY ar.reviewed_at DESC
+    </select>
+
+    <!-- 统计数量 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM AlbumReview
+    </select>
+
+    <!-- 条件统计 -->
+    <select id="countByCondition" parameterType="com.band.management.entity.AlbumReview" resultType="int">
+        SELECT COUNT(*)
+        FROM AlbumReview ar
+        LEFT JOIN Fan f ON ar.fan_id = f.fan_id
+        LEFT JOIN Album a ON ar.album_id = a.album_id
+        <where>
+            <if test="fanId != null">
+                AND ar.fan_id = #{fanId}
+            </if>
+            <if test="albumId != null">
+                AND ar.album_id = #{albumId}
+            </if>
+            <if test="rating != null">
+                AND ar.rating = #{rating}
+            </if>
+            <if test="fanName != null and fanName != ''">
+                AND f.name LIKE CONCAT('%', #{fanName}, '%')
+            </if>
+            <if test="albumTitle != null and albumTitle != ''">
+                AND a.title LIKE CONCAT('%', #{albumTitle}, '%')
+            </if>
+        </where>
+    </select>
+
+</mapper>
