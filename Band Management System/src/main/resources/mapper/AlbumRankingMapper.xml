@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.AlbumRankingMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.AlbumRanking">
+        <id column="ranking_id" property="rankingId" jdbcType="INTEGER"/>
+        <result column="album_id" property="albumId" jdbcType="BIGINT"/>
+        <result column="band_id" property="bandId" jdbcType="BIGINT"/>
+        <result column="album_title" property="albumTitle" jdbcType="VARCHAR"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+        <result column="avg_score" property="avgScore" jdbcType="DECIMAL"/>
+        <result column="review_count" property="reviewCount" jdbcType="INTEGER"/>
+        <result column="release_date" property="releaseDate" jdbcType="DATE"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <!-- 查询排行榜前10名 -->
+    <select id="selectTop10" resultMap="BaseResultMap">
+        SELECT 
+            ranking_id, 
+            album_id, 
+            band_id,
+            album_title, 
+            band_name, 
+            avg_score, 
+            review_count,
+            release_date,
+            updated_at
+        FROM AlbumRanking
+        ORDER BY avg_score DESC, review_count DESC
+        LIMIT 10
+    </select>
+
+    <!-- 查询所有排行榜数据 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT 
+            ranking_id, 
+            album_id, 
+            band_id,
+            album_title, 
+            band_name, 
+            avg_score, 
+            review_count,
+            release_date,
+            updated_at
+        FROM AlbumRanking
+        ORDER BY avg_score DESC, review_count DESC
+    </select>
+
+</mapper>

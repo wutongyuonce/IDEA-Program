@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.band.management.mapper.SongMapper">
+
+    <!-- 结果映射 -->
+    <resultMap id="BaseResultMap" type="com.band.management.entity.Song">
+        <id column="song_id" property="songId" jdbcType="BIGINT"/>
+        <result column="album_id" property="albumId" jdbcType="BIGINT"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="lyricist" property="lyricist" jdbcType="VARCHAR"/>
+        <result column="composer" property="composer" jdbcType="VARCHAR"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+        <result column="album_title" property="albumTitle" jdbcType="VARCHAR"/>
+        <result column="band_name" property="bandName" jdbcType="VARCHAR"/>
+    </resultMap>
+
+    <!-- 基础列 -->
+    <sql id="Base_Column_List">
+        song_id, album_id, title, lyricist, composer, created_at, updated_at
+    </sql>
+
+    <!-- 插入 -->
+    <insert id="insert" parameterType="com.band.management.entity.Song" useGeneratedKeys="true" keyProperty="songId">
+        INSERT INTO Song (album_id, title, lyricist, composer)
+        VALUES (#{albumId}, #{title}, #{lyricist}, #{composer})
+    </insert>
+
+    <!-- 根据ID删除 -->
+    <delete id="deleteById" parameterType="long">
+        DELETE FROM Song WHERE song_id = #{songId}
+    </delete>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="com.band.management.entity.Song">
+        UPDATE Song
+        <set>
+            <if test="albumId != null">album_id = #{albumId},</if>
+            <if test="title != null and title != ''">title = #{title},</if>
+            <if test="lyricist != null">lyricist = #{lyricist},</if>
+            <if test="composer != null">composer = #{composer},</if>
+        </set>
+        WHERE song_id = #{songId}
+    </update>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Song
+        WHERE song_id = #{songId}
+    </select>
+
+    <!-- 查询所有 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Song
+        ORDER BY song_id DESC
+    </select>
+
+    <!-- 根据专辑ID查询 -->
+    <select id="selectByAlbumId" parameterType="long" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM Song
+        WHERE album_id = #{albumId}
+        ORDER BY song_id ASC
+    </select>
+
+    <!-- 条件查询 -->
+    <select id="selectByCondition" parameterType="com.band.management.entity.Song" resultMap="BaseResultMap">
+        SELECT 
+            s.song_id, s.album_id, s.title, s.lyricist, s.composer, s.created_at, s.updated_at,
+            a.title AS album_title,
+            b.name AS band_name
+        FROM Song s
+        LEFT JOIN Album a ON s.album_id = a.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        <where>
+            <if test="albumId != null">
+                AND s.album_id = #{albumId}
+            </if>
+            <if test="title != null and title != ''">
+                AND s.title LIKE CONCAT('%', #{title}, '%')
+            </if>
+            <if test="bandName != null and bandName != ''">
+                AND b.name LIKE CONCAT('%', #{bandName}, '%')
+            </if>
+            <if test="lyricist != null and lyricist != ''">
+                AND s.lyricist LIKE CONCAT('%', #{lyricist}, '%')
+            </if>
+            <if test="composer != null and composer != ''">
+                AND s.composer LIKE CONCAT('%', #{composer}, '%')
+            </if>
+        </where>
+        ORDER BY s.song_id DESC
+    </select>
+
+    <!-- 统计数量 -->
+    <select id="count" resultType="int">
+        SELECT COUNT(*) FROM Song
+    </select>
+
+    <!-- 条件统计 -->
+    <select id="countByCondition" parameterType="com.band.management.entity.Song" resultType="int">
+        SELECT COUNT(*)
+        FROM Song
+        <where>
+            <if test="albumId != null">
+                AND album_id = #{albumId}
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+            <if test="lyricist != null and lyricist != ''">
+                AND lyricist LIKE CONCAT('%', #{lyricist}, '%')
+            </if>
+            <if test="composer != null and composer != ''">
+                AND composer LIKE CONCAT('%', #{composer}, '%')
+            </if>
+        </where>
+    </select>
+
+    <!-- 查询所有歌曲（包含专辑和乐队信息） -->
+    <select id="selectAllWithDetails" resultMap="BaseResultMap">
+        SELECT 
+            s.song_id, s.album_id, s.title, s.lyricist, s.composer, s.created_at, s.updated_at,
+            a.title AS album_title,
+            b.name AS band_name
+        FROM Song s
+        LEFT JOIN Album a ON s.album_id = a.album_id
+        LEFT JOIN Band b ON a.band_id = b.band_id
+        ORDER BY s.song_id DESC
+    </select>
+
+</mapper>
