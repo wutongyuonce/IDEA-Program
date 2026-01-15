@@ -106,4 +106,14 @@ public class AdminBandController {
         adminBandService.setLeader(bandId, memberId);
         return Result.success("设置队长成功");
     }
+
+    /**
+     * 解散乐队
+     */
+    @PutMapping("/{bandId}/disband")
+    public Result<Void> disband(@PathVariable("bandId") Long bandId) {
+        log.info("管理员解散乐队: {}", bandId);
+        adminBandService.disband(bandId);
+        return Result.success("解散乐队成功");
+    }
 }

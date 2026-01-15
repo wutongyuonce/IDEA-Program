@@ -30,10 +30,37 @@
           </template>
         </el-table-column>
         <el-table-column prop="memberCount" label="成员数" width="100" />
+        <el-table-column prop="isDisbanded" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.isDisbanded === 'Y'" type="info">已解散</el-tag>
+            <el-tag v-else type="success">正常</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="disbandedAt" label="解散日期" width="120">
+          <template #default="{ row }">
+            {{ row.disbandedAt || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="intro" label="简介" show-overflow-tooltip />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-button 
+              v-if="row.isDisbanded !== 'Y'" 
+              type="warning" 
+              size="small" 
+              @click="handleDisband(row)"
+            >
+              解散
+            </el-button>
+            <el-button 
+              v-else 
+              type="info" 
+              size="small" 
+              disabled
+            >
+              已解散
+            </el-button>
             <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -94,6 +121,22 @@
             该乐队暂无在队成员，请先添加成员
           </div>
         </el-form-item>
+        <el-form-item label="解散日期" prop="disbandedAt">
+          <el-date-picker
+            v-model="formData.disbandedAt"
+            type="date"
+            placeholder="选择解散日期"
+            style="width: 100%"
+            value-format="YYYY-MM-DD"
+            :disabled="formData.isDisbanded !== 'Y'"
+          />
+          <div v-if="formData.isDisbanded !== 'Y'" style="color: #909399; font-size: 12px; margin-top: 4px;">
+            乐队未解散，无法编辑解散日期
+          </div>
+          <div v-else style="color: #E6A23C; font-size: 12px; margin-top: 4px;">
+            解散日期不能早于成立日期
+          </div>
+        </el-form-item>
         <el-form-item label="乐队简介" prop="intro">
           <el-input
             v-model="formData.intro"
@@ -144,8 +187,23 @@ const formData = reactive({
   name: '',
   foundedAt: '',
   leaderMemberId: null,
+  isDisbanded: 'N',
+  disbandedAt: null,
   intro: ''
 })
+
+// 自定义验证器：解散日期不能早于成立日期
+const validateDisbandedAt = (rule, value, callback) => {
+  if (formData.isDisbanded === 'Y' && value) {
+    if (formData.foundedAt && value < formData.foundedAt) {
+      callback(new Error('解散日期不能早于成立日期'))
+    } else {
+      callback()
+    }
+  } else {
+    callback()
+  }
+}
 
 const rules = {
   name: [
@@ -153,6 +211,9 @@ const rules = {
   ],
   foundedAt: [
     { required: true, message: '请选择成立时间', trigger: 'change' }
+  ],
+  disbandedAt: [
+    { validator: validateDisbandedAt, trigger: 'change' }
   ]
 }
 
@@ -216,6 +277,8 @@ const handleAdd = () => {
     name: '',
     foundedAt: '',
     leaderMemberId: null,
+    isDisbanded: 'N',
+    disbandedAt: null,
     intro: ''
   })
   // 添加乐队时不加载成员列表（新乐队还没有成员）
@@ -225,7 +288,15 @@ const handleAdd = () => {
 
 const handleEdit = async (row) => {
   dialogTitle.value = '编辑乐队'
-  Object.assign(formData, row)
+  Object.assign(formData, {
+    bandId: row.bandId,
+    name: row.name,
+    foundedAt: row.foundedAt,
+    leaderMemberId: row.leaderMemberId,
+    isDisbanded: row.isDisbanded || 'N',
+    disbandedAt: row.disbandedAt || null,
+    intro: row.intro
+  })
   // 编辑时只加载该乐队的在队成员
   await loadMemberList(row.bandId)
   dialogVisible.value = true
@@ -245,6 +316,28 @@ const handleDelete = async (row) => {
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
+    }
+  }
+}
+
+const handleDisband = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要解散乐队"${row.name}"吗？解散后将自动设置所有未离队成员为已离队状态。`,
+      '解散乐队',
+      {
+        confirmButtonText: '确定解散',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    await request.put(`/admin/bands/${row.bandId}/disband`)
+    ElMessage.success('解散成功')
+    loadData()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '解散失败')
     }
   }
 }

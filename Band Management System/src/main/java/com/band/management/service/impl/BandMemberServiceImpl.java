@@ -79,6 +79,11 @@ public class BandMemberServiceImpl implements BandMemberService {
             throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
         }
 
+        // 检查乐队是否已解散
+        if ("Y".equals(band.getIsDisbanded())) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "该乐队已解散，无法添加成员");
+        }
+
         if (StringUtil.isEmpty(member.getName())) {
             throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), "成员姓名不能为空");
         }
@@ -91,6 +96,13 @@ public class BandMemberServiceImpl implements BandMemberService {
 
         if (member.getJoinDate().after(new Date())) {
             throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), "加入时间不能晚于当前时间");
+        }
+
+        // 检查加入日期不能早于乐队成立日期
+        if (member.getJoinDate().before(band.getFoundedAt())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                String.format("成员加入日期（%s）需要在乐队创建日期（%s）之后", 
+                    member.getJoinDate(), band.getFoundedAt()));
         }
 
         member.setBandId(bandId);
@@ -126,6 +138,13 @@ public class BandMemberServiceImpl implements BandMemberService {
 
         if (member.getJoinDate() != null && member.getJoinDate().after(new Date())) {
             throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), "加入时间不能晚于当前时间");
+        }
+
+        // 检查加入日期不能早于乐队成立日期
+        if (member.getJoinDate() != null && member.getJoinDate().before(band.getFoundedAt())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                String.format("成员加入日期（%s）需要在乐队创建日期（%s）之后", 
+                    member.getJoinDate(), band.getFoundedAt()));
         }
 
         if (member.getLeaveDate() != null) {

@@ -59,6 +59,14 @@ public class AdminConcertServiceImpl implements AdminConcertService {
             throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
         }
 
+        // 检查演出时间不能早于乐队成立日期
+        java.sql.Date eventDate = new java.sql.Date(concert.getEventTime().getTime());
+        if (eventDate.before(band.getFoundedAt())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                String.format("演唱会日期（%s）需要在乐队创建日期（%s）之后", 
+                    eventDate, band.getFoundedAt()));
+        }
+
         int result = concertMapper.insert(concert);
         if (result <= 0) {
             throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "创建演唱会失败");
@@ -104,6 +112,20 @@ public class AdminConcertServiceImpl implements AdminConcertService {
             Band band = bandMapper.selectById(concert.getBandId());
             if (band == null) {
                 throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+            }
+        }
+
+        // 检查演出时间不能早于乐队成立日期
+        if (concert.getEventTime() != null) {
+            Long targetBandId = concert.getBandId() != null ? concert.getBandId() : existConcert.getBandId();
+            Band targetBand = bandMapper.selectById(targetBandId);
+            if (targetBand != null) {
+                java.sql.Date eventDate = new java.sql.Date(concert.getEventTime().getTime());
+                if (eventDate.before(targetBand.getFoundedAt())) {
+                    throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                        String.format("演唱会日期（%s）需要在乐队创建日期（%s）之后", 
+                            eventDate, targetBand.getFoundedAt()));
+                }
             }
         }
 

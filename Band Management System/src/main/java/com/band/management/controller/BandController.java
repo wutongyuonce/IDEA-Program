@@ -13,7 +13,8 @@ import javax.validation.Valid;
 import java.util.List;
 
 /**
- * 乐队控制器
+ * 乐队控制器 - 公共接口
+ * 提供乐队信息的公开查询功能
  * 
  * @author Band Management Team
  */
@@ -24,37 +25,6 @@ public class BandController {
 
     @Autowired
     private BandService bandService;
-
-    /**
-     * 创建乐队
-     */
-    @PostMapping
-    public Result<Long> create(@RequestBody @Valid Band band) {
-        log.info("创建乐队: {}", band.getName());
-        Long bandId = bandService.create(band);
-        return Result.success("创建成功", bandId);
-    }
-
-    /**
-     * 删除乐队
-     */
-    @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable("id") Long bandId) {
-        log.info("删除乐队: {}", bandId);
-        bandService.delete(bandId);
-        return Result.success("删除成功");
-    }
-
-    /**
-     * 更新乐队
-     */
-    @PutMapping("/{id}")
-    public Result<Void> update(@PathVariable("id") Long bandId, @RequestBody @Valid Band band) {
-        log.info("更新乐队: {}", bandId);
-        band.setBandId(bandId);
-        bandService.update(band);
-        return Result.success("更新成功");
-    }
 
     /**
      * 查询乐队详情

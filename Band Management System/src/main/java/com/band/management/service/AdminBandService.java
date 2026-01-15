@@ -75,4 +75,12 @@ public interface AdminBandService {
      * @param memberId 成员ID
      */
     void setLeader(Long bandId, Long memberId);
+
+    /**
+     * 解散乐队
+     * 设置乐队为已解散状态，并将所有未离队成员设置为已离队
+     * 
+     * @param bandId 乐队ID
+     */
+    void disband(Long bandId);
 }

@@ -3,6 +3,7 @@ package com.band.management.exception;
 import com.band.management.common.Result;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BindException;
@@ -87,7 +88,70 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(SQLException.class)
     public Result<?> handleSQLException(SQLException e, HttpServletRequest request) {
-        log.error("数据库异常: URI={}, Message={}", request.getRequestURI(), e.getMessage(), e);
+        log.error("数据库异常: URI={}, SQLState={}, ErrorCode={}, Message={}", 
+                request.getRequestURI(), e.getSQLState(), e.getErrorCode(), e.getMessage(), e);
+        
+        // 提取触发器或约束的错误信息
+        String message = e.getMessage();
+        
+        // MySQL触发器错误的SQLState通常是45000
+        if ("45000".equals(e.getSQLState()) && message != null) {
+            // 提取触发器中SIGNAL抛出的MESSAGE_TEXT
+            // 格式通常是: ... (conn=xxx) xxx
+            int lastParenIndex = message.lastIndexOf(')');
+            if (lastParenIndex > 0 && lastParenIndex < message.length() - 1) {
+                String extractedMessage = message.substring(lastParenIndex + 1).trim();
+                if (!extractedMessage.isEmpty()) {
+                    return Result.error(ErrorCode.PARAM_ERROR.getCode(), extractedMessage);
+                }
+            }
+            // 如果无法提取，返回完整消息
+            return Result.error(ErrorCode.PARAM_ERROR.getCode(), message);
+        }
+        
+        // 其他SQL异常返回通用错误
+        return Result.error(ErrorCode.SYSTEM_ERROR.getCode(), "数据库操作失败");
+    }
+
+    /**
+     * Spring JDBC包装的SQL异常
+     */
+    @ExceptionHandler(UncategorizedSQLException.class)
+    public Result<?> handleUncategorizedSQLException(UncategorizedSQLException e, HttpServletRequest request) {
+        log.error("数据库异常(UncategorizedSQLException): URI={}, Message={}", 
+                request.getRequestURI(), e.getMessage(), e);
+        
+        // 获取原始的SQLException
+        SQLException sqlException = e.getSQLException();
+        if (sqlException != null) {
+            return handleSQLException(sqlException, request);
+        }
+        
+        // 如果无法获取原始SQLException，尝试从消息中提取
+        String message = e.getMessage();
+        if (message != null) {
+            // UncategorizedSQLException的消息格式通常包含原始错误信息
+            // 尝试提取最后一行（通常是实际的错误消息）
+            String[] lines = message.split("\n");
+            for (int i = lines.length - 1; i >= 0; i--) {
+                String line = lines[i].trim();
+                // 跳过空行和以"###"开头的行
+                if (!line.isEmpty() && !line.startsWith("###") && !line.startsWith("nested exception")) {
+                    // 移除可能的前缀（如"Cause: java.sql.SQLException: "）
+                    int colonIndex = line.lastIndexOf(": ");
+                    if (colonIndex > 0 && colonIndex < line.length() - 1) {
+                        String extractedMessage = line.substring(colonIndex + 2).trim();
+                        if (!extractedMessage.isEmpty()) {
+                            return Result.error(ErrorCode.PARAM_ERROR.getCode(), extractedMessage);
+                        }
+                    }
+                    // 如果没有冒号，直接返回这一行
+                    return Result.error(ErrorCode.PARAM_ERROR.getCode(), line);
+                }
+            }
+        }
+        
+        // 如果无法提取，返回通用错误
         return Result.error(ErrorCode.SYSTEM_ERROR.getCode(), "数据库操作失败");
     }
 

@@ -12,6 +12,8 @@
         <result column="intro" property="intro" jdbcType="VARCHAR"/>
         <result column="leader_member_id" property="leaderMemberId" jdbcType="BIGINT"/>
         <result column="member_count" property="memberCount" jdbcType="INTEGER"/>
+        <result column="is_disbanded" property="isDisbanded" jdbcType="VARCHAR"/>
+        <result column="disbanded_at" property="disbandedAt" jdbcType="DATE"/>
         <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
         <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
         <result column="leader_name" property="leaderName" jdbcType="VARCHAR"/>
@@ -19,13 +21,14 @@
 
     <!-- 基础列 -->
     <sql id="Base_Column_List">
-        band_id, name, founded_at, intro, leader_member_id, member_count, created_at, updated_at
+        band_id, name, founded_at, intro, leader_member_id, member_count, is_disbanded, disbanded_at, created_at, updated_at
     </sql>
 
     <!-- 插入 -->
     <insert id="insert" parameterType="com.band.management.entity.Band" useGeneratedKeys="true" keyProperty="bandId">
-        INSERT INTO Band (name, founded_at, intro, leader_member_id, member_count)
-        VALUES (#{name}, #{foundedAt}, #{intro}, #{leaderMemberId}, COALESCE(#{memberCount}, 0))
+        INSERT INTO Band (name, founded_at, intro, leader_member_id, member_count, is_disbanded, disbanded_at)
+        VALUES (#{name}, #{foundedAt}, #{intro}, #{leaderMemberId}, COALESCE(#{memberCount}, 0), 
+                COALESCE(#{isDisbanded}, 'N'), #{disbandedAt})
     </insert>
 
     <!-- 根据ID删除 -->
@@ -43,6 +46,8 @@
             <!-- 支持将队长设置为null（清除队长） -->
             leader_member_id = #{leaderMemberId},
             <if test="memberCount != null">member_count = #{memberCount},</if>
+            <if test="isDisbanded != null and isDisbanded != ''">is_disbanded = #{isDisbanded},</if>
+            <if test="disbandedAt != null">disbanded_at = #{disbandedAt},</if>
         </set>
         WHERE band_id = #{bandId}
     </update>
@@ -59,6 +64,7 @@
         SELECT 
             b.band_id, b.name, b.founded_at, b.intro, b.leader_member_id,
             (SELECT COUNT(*) FROM Member m WHERE m.band_id = b.band_id AND m.leave_date IS NULL) AS member_count,
+            b.is_disbanded, b.disbanded_at,
             b.created_at, b.updated_at,
             m.name AS leader_name
         FROM Band b
@@ -78,6 +84,7 @@
         SELECT 
             b.band_id, b.name, b.founded_at, b.intro, b.leader_member_id,
             (SELECT COUNT(*) FROM Member m WHERE m.band_id = b.band_id AND m.leave_date IS NULL) AS member_count,
+            b.is_disbanded, b.disbanded_at,
             b.created_at, b.updated_at,
             m.name AS leader_name
         FROM Band b
@@ -88,6 +95,9 @@
             </if>
             <if test="foundedAt != null">
                 AND b.founded_at = #{foundedAt}
+            </if>
+            <if test="isDisbanded != null and isDisbanded != ''">
+                AND b.is_disbanded = #{isDisbanded}
             </if>
         </where>
         ORDER BY b.band_id DESC
@@ -109,6 +119,9 @@
             <if test="foundedAt != null">
                 AND founded_at = #{foundedAt}
             </if>
+            <if test="isDisbanded != null and isDisbanded != ''">
+                AND is_disbanded = #{isDisbanded}
+            </if>
         </where>
     </select>
 
@@ -119,6 +132,8 @@
             b.name,
             b.founded_at,
             b.member_count,
+            b.is_disbanded,
+            b.disbanded_at,
             b.intro,
             b.created_at,
             b.updated_at,
@@ -130,7 +145,7 @@
             FROM FanFavoriteBand 
             WHERE fan_id = #{fanId}
         )
-        GROUP BY b.band_id, b.name, b.founded_at, b.member_count, b.intro, b.created_at, b.updated_at
+        GROUP BY b.band_id, b.name, b.founded_at, b.member_count, b.is_disbanded, b.disbanded_at, b.intro, b.created_at, b.updated_at
         ORDER BY fan_count DESC, b.band_id ASC
     </select>
 

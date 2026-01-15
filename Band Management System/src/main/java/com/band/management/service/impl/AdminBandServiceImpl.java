@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -203,10 +204,48 @@ public class AdminBandServiceImpl implements AdminBandService {
             }
         }
 
-        // 更新数据
+        // 检查是否修改了已解散乐队的解散日期
+        boolean shouldUpdateMemberLeaveDate = false;
+        Date oldDisbandedAt = existBand.getDisbandedAt();
+        Date newDisbandedAt = band.getDisbandedAt();
+        
+        if ("Y".equals(existBand.getIsDisbanded()) && 
+            oldDisbandedAt != null && 
+            newDisbandedAt != null && 
+            !oldDisbandedAt.equals(newDisbandedAt)) {
+            // 已解散的乐队，且解散日期发生了变化
+            shouldUpdateMemberLeaveDate = true;
+            log.info("检测到解散日期变更: {} -> {}", oldDisbandedAt, newDisbandedAt);
+        }
+
+        // 更新乐队数据
         int result = bandMapper.update(band);
         if (result <= 0) {
             throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "更新乐队失败");
+        }
+
+        // 如果解散日期发生变化，同步更新成员离队日期
+        if (shouldUpdateMemberLeaveDate) {
+            List<Member> members = memberMapper.selectByBandId(band.getBandId());
+            if (members != null && !members.isEmpty()) {
+                int updatedCount = 0;
+                // 将java.util.Date转换为java.sql.Date用于比较和更新
+                java.sql.Date oldSqlDate = new java.sql.Date(oldDisbandedAt.getTime());
+                java.sql.Date newSqlDate = new java.sql.Date(newDisbandedAt.getTime());
+                
+                for (Member member : members) {
+                    // 只更新离队日期与旧解散日期一致的成员
+                    // 这些成员很可能是在解散时自动设置的离队日期
+                    if (member.getLeaveDate() != null && member.getLeaveDate().equals(oldSqlDate)) {
+                        member.setLeaveDate(newSqlDate);
+                        memberMapper.update(member);
+                        updatedCount++;
+                        log.info("成员 {} 的离队日期已更新: {} -> {}", 
+                                member.getName(), oldSqlDate, newSqlDate);
+                    }
+                }
+                log.info("共更新了 {} 个成员的离队日期", updatedCount);
+            }
         }
 
         log.info("管理员更新乐队成功");
@@ -300,5 +339,51 @@ public class AdminBandServiceImpl implements AdminBandService {
         }
 
         log.info("管理员设置队长成功");
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void disband(Long bandId) {
+        log.info("管理员解散乐队: {}", bandId);
+
+        // 设置管理员数据源
+        DataSourceContextHolder.setDataSourceType("admin");
+
+        // 检查乐队是否存在
+        Band band = bandMapper.selectById(bandId);
+        if (band == null) {
+            throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+        }
+
+        // 检查乐队是否已经解散
+        if ("Y".equals(band.getIsDisbanded())) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "该乐队已经解散");
+        }
+
+        // 获取当前日期作为解散日期
+        java.sql.Date disbandDate = new java.sql.Date(System.currentTimeMillis());
+
+        // 更新乐队状态为已解散
+        band.setIsDisbanded("Y");
+        band.setDisbandedAt(disbandDate);
+        int result = bandMapper.update(band);
+        if (result <= 0) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "解散乐队失败");
+        }
+
+        // 将所有未离队的成员设置为已离队，离队日期设置为解散日期
+        List<Member> members = memberMapper.selectByBandId(bandId);
+        if (members != null && !members.isEmpty()) {
+            for (Member member : members) {
+                // 只更新未离队的成员（leaveDate为null）
+                if (member.getLeaveDate() == null) {
+                    member.setLeaveDate(disbandDate);
+                    memberMapper.update(member);
+                    log.info("成员 {} 已设置为离队，离队日期: {}", member.getName(), disbandDate);
+                }
+            }
+        }
+
+        log.info("管理员解散乐队成功，解散日期: {}", disbandDate);
     }
 }

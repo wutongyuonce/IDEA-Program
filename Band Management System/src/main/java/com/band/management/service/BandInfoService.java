@@ -24,4 +24,10 @@ public interface BandInfoService {
      * 更新乐队信息
      */
     void updateBandInfo(Long bandId, Band band);
+    
+    /**
+     * 解散乐队
+     * 设置乐队为已解散状态，并将所有未离队成员设置为已离队
+     */
+    void disbandBand(Long bandId);
 }

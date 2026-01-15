@@ -92,6 +92,14 @@ public class BandConcertServiceImpl implements BandConcertService {
             throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), "演出地点不能为空");
         }
 
+        // 检查演出时间不能早于乐队成立日期
+        java.sql.Date eventDate = new java.sql.Date(concert.getEventTime().getTime());
+        if (eventDate.before(band.getFoundedAt())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                String.format("演唱会日期（%s）需要在乐队创建日期（%s）之后", 
+                    eventDate, band.getFoundedAt()));
+        }
+
         concert.setBandId(bandId);
         int result = concertMapper.insert(concert);
         if (result <= 0) {
@@ -121,6 +129,16 @@ public class BandConcertServiceImpl implements BandConcertService {
 
         if (!existConcert.getBandId().equals(bandId)) {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED.getCode(), "无权操作其他乐队的演唱会");
+        }
+
+        // 检查演出时间不能早于乐队成立日期
+        if (concert.getEventTime() != null) {
+            java.sql.Date eventDate = new java.sql.Date(concert.getEventTime().getTime());
+            if (eventDate.before(band.getFoundedAt())) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                    String.format("演唱会日期（%s）需要在乐队创建日期（%s）之后", 
+                        eventDate, band.getFoundedAt()));
+            }
         }
 
         int result = concertMapper.update(concert);

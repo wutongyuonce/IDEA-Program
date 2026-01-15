@@ -48,6 +48,17 @@ public class Band implements Serializable {
     private Integer memberCount;
 
     /**
+     * 是否已解散：N-未解散，Y-已解散
+     */
+    private String isDisbanded;
+
+    /**
+     * 解散日期
+     */
+    @JsonFormat(pattern = "yyyy-MM-dd", timezone = "GMT+8")
+    private Date disbandedAt;
+
+    /**
      * 创建时间
      */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")

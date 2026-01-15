@@ -14,6 +14,13 @@
             <el-descriptions-item label="成立时间">{{ bandInfo.foundedAt }}</el-descriptions-item>
             <el-descriptions-item label="成员数量">{{ bandInfo.memberCount }}</el-descriptions-item>
             <el-descriptions-item label="专辑数量">{{ statistics.albumCount }}</el-descriptions-item>
+            <el-descriptions-item label="解散状态">
+              <el-tag v-if="bandInfo.isDisbanded === 'Y'" type="info">已解散</el-tag>
+              <el-tag v-else type="success">正常</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="解散日期">
+              {{ bandInfo.disbandedAt || '-' }}
+            </el-descriptions-item>
             <el-descriptions-item label="歌曲数量" :span="2">{{ statistics.songCount }}</el-descriptions-item>
             <el-descriptions-item label="乐队简介" :span="2">
               <div style="white-space: pre-wrap;">{{ bandInfo.intro || '暂无简介' }}</div>
@@ -126,7 +133,7 @@
       </el-col>
     </el-row>
     
-    <!-- 删除乐队卡片 -->
+    <!-- 危险操作卡片 -->
     <el-row :gutter="20" style="margin-top: 20px;">
       <el-col :span="24">
         <el-card>
@@ -134,27 +141,66 @@
             <span style="color: #F56C6C;">危险操作</span>
           </template>
           
-          <el-alert
-            title="警告"
-            type="warning"
-            :closable="false"
-            style="margin-bottom: 20px;"
-          >
-            删除乐队是不可逆操作，将会连带删除以下数据：
-            <ul style="margin: 10px 0 0 20px;">
-              <li>所有专辑数据</li>
-              <li>所有歌曲数据</li>
-              <li>所有演唱会数据</li>
-              <li>所有歌迷关注数据</li>
-            </ul>
-            <p style="margin-top: 10px; color: #E6A23C; font-weight: bold;">
-              注意：如果乐队有成员，需要先删除所有成员才能删除乐队
-            </p>
-          </el-alert>
+          <!-- 解散乐队 -->
+          <div style="margin-bottom: 30px;">
+            <h4 style="margin-bottom: 10px;">解散乐队</h4>
+            <el-alert
+              title="警告"
+              type="warning"
+              :closable="false"
+              style="margin-bottom: 15px;"
+            >
+              解散乐队后：
+              <ul style="margin: 10px 0 0 20px;">
+                <li>乐队状态将变为"已解散"</li>
+                <li>所有未离队成员将自动设置为已离队</li>
+                <li>离队日期将设置为解散日期</li>
+                <li>已解散的乐队无法添加新的成员、专辑、歌曲和演唱会</li>
+              </ul>
+            </el-alert>
+            
+            <el-button 
+              v-if="bandInfo.isDisbanded !== 'Y'"
+              type="warning" 
+              @click="handleDisbandBand" 
+              :loading="disbandLoading"
+            >
+              解散乐队
+            </el-button>
+            <el-button 
+              v-else
+              type="info" 
+              disabled
+            >
+              已解散
+            </el-button>
+          </div>
           
-          <el-button type="danger" @click="handleDeleteBand" :loading="deleteLoading">
-            删除乐队
-          </el-button>
+          <!-- 删除乐队 -->
+          <div>
+            <h4 style="margin-bottom: 10px;">删除乐队</h4>
+            <el-alert
+              title="警告"
+              type="warning"
+              :closable="false"
+              style="margin-bottom: 15px;"
+            >
+              删除乐队是不可逆操作，将会连带删除以下数据：
+              <ul style="margin: 10px 0 0 20px;">
+                <li>所有专辑数据</li>
+                <li>所有歌曲数据</li>
+                <li>所有演唱会数据</li>
+                <li>所有歌迷关注数据</li>
+              </ul>
+              <p style="margin-top: 10px; color: #E6A23C; font-weight: bold;">
+                注意：如果乐队有成员，需要先删除所有成员才能删除乐队
+              </p>
+            </el-alert>
+            
+            <el-button type="danger" @click="handleDeleteBand" :loading="deleteLoading">
+              删除乐队
+            </el-button>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -196,6 +242,7 @@ const router = useRouter()
 const loading = ref(false)
 const submitLoading = ref(false)
 const passwordLoading = ref(false)
+const disbandLoading = ref(false)
 const deleteLoading = ref(false)
 const dialogVisible = ref(false)
 const formRef = ref(null)
@@ -206,6 +253,8 @@ const bandInfo = ref({
   name: '',
   foundedAt: '',
   memberCount: 0,
+  isDisbanded: 'N',
+  disbandedAt: null,
   intro: ''
 })
 
@@ -401,6 +450,40 @@ const handleDeleteBand = async () => {
     }
   } finally {
     deleteLoading.value = false
+  }
+}
+
+const handleDisbandBand = async () => {
+  try {
+    // 第一次确认
+    await ElMessageBox.confirm(
+      '确定要解散乐队吗？解散后将自动设置所有未离队成员为已离队状态，且已解散的乐队无法添加新的成员、专辑、歌曲和演唱会。',
+      '解散乐队',
+      {
+        confirmButtonText: '确定解散',
+        cancelButtonText: '取消',
+        type: 'warning',
+        distinguishCancelAndClose: true
+      }
+    )
+    
+    // 执行解散
+    disbandLoading.value = true
+    await request.put(`/band/info/${bandInfo.value.bandId}/disband`)
+    
+    ElMessage.success('乐队解散成功')
+    
+    // 刷新乐队信息
+    await loadBandInfo()
+    
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') {
+      ElMessage.info('已取消解散')
+    } else {
+      ElMessage.error(error.message || '解散失败')
+    }
+  } finally {
+    disbandLoading.value = false
   }
 }
 

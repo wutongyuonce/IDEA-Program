@@ -235,9 +235,7 @@ public class AuthServiceImpl implements AuthService {
         // 自动生成username: band_名称拼音
         String username = generateBandUsername(name);
 
-        // 使用 ADMIN 数据源进行注册
-        DataSourceContextHolder.setDataSourceType("ADMIN");
-
+        // 数据源已在Controller层设置，这里不再重复设置
         // 检查用户名是否已存在
         User existingUser = userMapper.selectByUsername(username);
         if (existingUser != null) {
@@ -299,9 +297,7 @@ public class AuthServiceImpl implements AuthService {
         // 自动生成username: fan_姓名拼音
         String username = generateFanUsername(name);
 
-        // 使用 ADMIN 数据源进行注册
-        DataSourceContextHolder.setDataSourceType("ADMIN");
-
+        // 数据源已在Controller层设置，这里不再重复设置
         // 检查用户名是否已存在
         User existingUser = userMapper.selectByUsername(username);
         if (existingUser != null) {

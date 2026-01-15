@@ -56,6 +56,13 @@ public class AdminAlbumServiceImpl implements AdminAlbumService {
             throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
         }
 
+        // 检查发行日期不能早于乐队成立日期
+        if (album.getReleaseDate().before(band.getFoundedAt())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                String.format("专辑发行日期（%s）需要在乐队创建日期（%s）之后", 
+                    album.getReleaseDate(), band.getFoundedAt()));
+        }
+
         int result = albumMapper.insert(album);
         if (result <= 0) {
             throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "创建专辑失败");
@@ -99,6 +106,17 @@ public class AdminAlbumServiceImpl implements AdminAlbumService {
             Band band = bandMapper.selectById(album.getBandId());
             if (band == null) {
                 throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+            }
+        }
+
+        // 检查发行日期不能早于乐队成立日期
+        if (album.getReleaseDate() != null) {
+            Long targetBandId = album.getBandId() != null ? album.getBandId() : existAlbum.getBandId();
+            Band targetBand = bandMapper.selectById(targetBandId);
+            if (targetBand != null && album.getReleaseDate().before(targetBand.getFoundedAt())) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                    String.format("专辑发行日期（%s）需要在乐队创建日期（%s）之后", 
+                        album.getReleaseDate(), targetBand.getFoundedAt()));
             }
         }
 

@@ -67,9 +67,33 @@ public class AdminMemberServiceImpl implements AdminMemberService {
             throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
         }
 
+        // 如果乐队已解散，必须填写离队日期，且离队日期不能晚于解散日期
+        if ("Y".equals(band.getIsDisbanded())) {
+            if (member.getLeaveDate() == null) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                    "该乐队已解散，添加成员时必须填写离队日期");
+            }
+            
+            if (band.getDisbandedAt() != null) {
+                // 将java.util.Date转换为java.sql.Date进行比较
+                java.sql.Date disbandedSqlDate = new java.sql.Date(band.getDisbandedAt().getTime());
+                if (member.getLeaveDate().after(disbandedSqlDate)) {
+                    throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                        String.format("该乐队已于 %s 解散，成员离队日期不能晚于解散日期", band.getDisbandedAt()));
+                }
+            }
+        }
+
         // 检查日期逻辑
         if (member.getLeaveDate() != null && member.getLeaveDate().before(member.getJoinDate())) {
             throw new BusinessException(ErrorCode.INVALID_DATE_RANGE);
+        }
+
+        // 检查加入日期不能早于乐队成立日期
+        if (member.getJoinDate().before(band.getFoundedAt())) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                String.format("成员加入日期（%s）需要在乐队创建日期（%s）之后", 
+                    member.getJoinDate(), band.getFoundedAt()));
         }
 
         // 插入数据
@@ -139,6 +163,17 @@ public class AdminMemberServiceImpl implements AdminMemberService {
         if (member.getLeaveDate() != null && member.getJoinDate() != null 
                 && member.getLeaveDate().before(member.getJoinDate())) {
             throw new BusinessException(ErrorCode.INVALID_DATE_RANGE);
+        }
+
+        // 检查加入日期不能早于乐队成立日期
+        if (member.getJoinDate() != null) {
+            Long targetBandId = member.getBandId() != null ? member.getBandId() : existMember.getBandId();
+            Band targetBand = bandMapper.selectById(targetBandId);
+            if (targetBand != null && member.getJoinDate().before(targetBand.getFoundedAt())) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+                    String.format("成员加入日期（%s）需要在乐队创建日期（%s）之后", 
+                        member.getJoinDate(), targetBand.getFoundedAt()));
+            }
         }
 
         // 更新数据

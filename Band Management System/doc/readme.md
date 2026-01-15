@@ -16,6 +16,31 @@
 
 ## 1. 项目架构
 
+### 1.0 项目特性
+
+本项目具有以下核心特性：
+
+**完善的异常处理机制**：
+- 应用层和数据库层双重验证
+- 详细的错误提示信息
+- 统一的异常处理器
+- 清晰的错误信息提取逻辑
+
+**数据完整性双重验证**：
+- 应用层验证：提供详细的错误信息，包含具体日期
+- 数据库层验证：通过触发器确保数据完整性
+- 日期验证：成员加入日期、专辑发行日期、演唱会日期均不能早于乐队成立日期
+
+**多数据源动态切换**：
+- 基于角色的数据库权限隔离
+- 管理员、乐队用户、歌迷用户使用不同的数据库连接
+- 通过ThreadLocal实现线程安全的数据源切换
+
+**自动化数据维护**：
+- 触发器自动维护乐队成员人数
+- 触发器自动计算专辑平均评分
+- 触发器自动更新专辑排行榜
+
 ### 1.1 项目结构
 
 ```
@@ -387,28 +412,6 @@ public class DataSourceConfig {
     }
 }
 ```
-
-### 3.4 使用示例
-
-```java
-// 在Service层方法中切换数据源
-@Service
-public class AdminSongServiceImpl implements AdminSongService {
-    
-    @Override
-    public PageResult<Song> page(int pageNum, int pageSize, Song condition) {
-        // 设置使用管理员数据源
-        DataSourceContextHolder.setDataSourceType("admin");
-        
-        // 执行查询 - 自动使用admin数据源
-        PageHelper.startPage(pageNum, pageSize);
-        List<Song> list = songMapper.selectByCondition(condition);
-        
-        return PageResult.of(list);
-    }
-}
-```
-
 
 ---
 
@@ -2110,12 +2113,31 @@ package com.band.management.exception;
 
 import com.band.management.common.Result;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.UncategorizedSQLException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.validation.BindException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import javax.servlet.http.HttpServletRequest;
+import java.sql.SQLException;
+import java.util.stream.Collectors;
 
 /**
  * 全局异常处理器
  * 统一处理所有异常，返回标准格式
+ * 
+ * 核心功能：
+ * 1. 业务异常处理
+ * 2. SQL异常处理（包括触发器错误）
+ * 3. UncategorizedSQLException处理（Spring JDBC包装的SQL异常）
+ * 4. 参数校验异常处理
+ * 5. 认证和权限异常处理
  * 
  * @author Band Management Team
  */
@@ -2127,26 +2149,158 @@ public class GlobalExceptionHandler {
      * 处理业务异常
      */
     @ExceptionHandler(BusinessException.class)
-    public Result<Void> handleBusinessException(BusinessException e) {
-        log.error("业务异常: code={}, message={}", e.getCode(), e.getMessage());
+    public Result<?> handleBusinessException(BusinessException e, HttpServletRequest request) {
+        log.error("业务异常: URI={}, Code={}, Message={}", request.getRequestURI(), e.getCode(), e.getMessage());
+        
+        // 对于未授权错误，记录警告日志
+        if (e.getCode().equals(ErrorCode.UNAUTHORIZED.getCode())) {
+            log.warn("未授权访问: URI={}", request.getRequestURI());
+        }
+        
         return Result.error(e.getCode(), e.getMessage());
     }
 
     /**
      * 处理参数校验异常
      */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public Result<Void> handleIllegalArgumentException(IllegalArgumentException e) {
-        log.error("参数异常: {}", e.getMessage());
-        return Result.error(ErrorCode.PARAM_ERROR.getCode(), e.getMessage());
+    @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
+    public Result<?> handleValidationException(Exception e, HttpServletRequest request) {
+        log.error("参数校验异常: URI={}", request.getRequestURI());
+        
+        String message;
+        if (e instanceof MethodArgumentNotValidException) {
+            MethodArgumentNotValidException ex = (MethodArgumentNotValidException) e;
+            message = ex.getBindingResult().getFieldErrors().stream()
+                    .map(FieldError::getDefaultMessage)
+                    .collect(Collectors.joining("; "));
+        } else {
+            BindException ex = (BindException) e;
+            message = ex.getBindingResult().getFieldErrors().stream()
+                    .map(FieldError::getDefaultMessage)
+                    .collect(Collectors.joining("; "));
+        }
+        
+        return Result.error(ErrorCode.PARAM_ERROR.getCode(), message);
+    }
+
+    /**
+     * 处理SQL异常
+     * 
+     * 核心功能：
+     * 1. 提取MySQL触发器错误信息（SQLState = 45000）
+     * 2. 从错误消息中提取实际的错误文本
+     * 3. 返回用户友好的错误提示
+     */
+    @ExceptionHandler(SQLException.class)
+    public Result<?> handleSQLException(SQLException e, HttpServletRequest request) {
+        log.error("数据库异常: URI={}, SQLState={}, ErrorCode={}, Message={}", 
+                request.getRequestURI(), e.getSQLState(), e.getErrorCode(), e.getMessage(), e);
+        
+        // 提取触发器或约束的错误信息
+        String message = e.getMessage();
+        
+        // MySQL触发器错误的SQLState通常是45000
+        if ("45000".equals(e.getSQLState()) && message != null) {
+            // 提取触发器中SIGNAL抛出的MESSAGE_TEXT
+            // 格式通常是: ... (conn=xxx) 实际错误消息
+            int lastParenIndex = message.lastIndexOf(')');
+            if (lastParenIndex > 0 && lastParenIndex < message.length() - 1) {
+                String extractedMessage = message.substring(lastParenIndex + 1).trim();
+                if (!extractedMessage.isEmpty()) {
+                    return Result.error(ErrorCode.PARAM_ERROR.getCode(), extractedMessage);
+                }
+            }
+            // 如果无法提取，返回完整消息
+            return Result.error(ErrorCode.PARAM_ERROR.getCode(), message);
+        }
+        
+        // 其他SQL异常返回通用错误
+        return Result.error(ErrorCode.SYSTEM_ERROR.getCode(), "数据库操作失败");
+    }
+
+    /**
+     * 处理Spring JDBC包装的SQL异常
+     * 
+     * 核心功能：
+     * 1. 获取原始的SQLException并调用handleSQLException处理
+     * 2. 如果无法获取原始异常，从消息中提取错误信息
+     * 3. 确保乐队管理和管理员后台的错误提示一致
+     * 
+     * 这个处理器解决了乐队管理页面显示"系统错误，请联系管理员"的问题
+     */
+    @ExceptionHandler(UncategorizedSQLException.class)
+    public Result<?> handleUncategorizedSQLException(UncategorizedSQLException e, HttpServletRequest request) {
+        log.error("数据库异常(UncategorizedSQLException): URI={}, Message={}", 
+                request.getRequestURI(), e.getMessage(), e);
+        
+        // 获取原始的SQLException
+        SQLException sqlException = e.getSQLException();
+        if (sqlException != null) {
+            return handleSQLException(sqlException, request);
+        }
+        
+        // 如果无法获取原始SQLException，尝试从消息中提取
+        String message = e.getMessage();
+        if (message != null) {
+            // UncategorizedSQLException的消息格式通常包含原始错误信息
+            // 尝试提取最后一行（通常是实际的错误消息）
+            String[] lines = message.split("\n");
+            for (int i = lines.length - 1; i >= 0; i--) {
+                String line = lines[i].trim();
+                // 跳过空行和以"###"开头的行
+                if (!line.isEmpty() && !line.startsWith("###") && !line.startsWith("nested exception")) {
+                    // 移除可能的前缀（如"Cause: java.sql.SQLException: "）
+                    int colonIndex = line.lastIndexOf(": ");
+                    if (colonIndex > 0 && colonIndex < line.length() - 1) {
+                        String extractedMessage = line.substring(colonIndex + 2).trim();
+                        if (!extractedMessage.isEmpty()) {
+                            return Result.error(ErrorCode.PARAM_ERROR.getCode(), extractedMessage);
+                        }
+                    }
+                    // 如果没有冒号，直接返回这一行
+                    return Result.error(ErrorCode.PARAM_ERROR.getCode(), line);
+                }
+            }
+        }
+        
+        // 如果无法提取，返回通用错误
+        return Result.error(ErrorCode.SYSTEM_ERROR.getCode(), "数据库操作失败");
+    }
+
+    /**
+     * 处理认证失败异常
+     */
+    @ExceptionHandler(BadCredentialsException.class)
+    public Result<?> handleBadCredentialsException(BadCredentialsException e, HttpServletRequest request) {
+        log.error("认证失败: URI={}, Message={}", request.getRequestURI(), e.getMessage());
+        return Result.error(ErrorCode.LOGIN_FAILED.getCode(), ErrorCode.LOGIN_FAILED.getMessage());
+    }
+
+    /**
+     * 处理权限不足异常
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public Result<?> handleAccessDeniedException(AccessDeniedException e, HttpServletRequest request) {
+        log.error("权限不足: URI={}, Message={}", request.getRequestURI(), e.getMessage());
+        return Result.error(ErrorCode.FORBIDDEN.getCode(), ErrorCode.FORBIDDEN.getMessage());
+    }
+
+    /**
+     * 处理空指针异常
+     */
+    @ExceptionHandler(NullPointerException.class)
+    public Result<?> handleNullPointerException(NullPointerException e, HttpServletRequest request) {
+        log.error("空指针异常: URI={}", request.getRequestURI(), e);
+        return Result.error(ErrorCode.SYSTEM_ERROR.getCode(), "系统内部错误");
     }
 
     /**
      * 处理其他异常
      */
     @ExceptionHandler(Exception.class)
-    public Result<Void> handleException(Exception e) {
-        log.error("系统异常", e);
+    public Result<?> handleException(Exception e, HttpServletRequest request) {
+        log.error("系统异常: URI={}, Message={}", request.getRequestURI(), e.getMessage(), e);
         return Result.error(ErrorCode.SYSTEM_ERROR.getCode(), "系统错误，请联系管理员");
     }
 }
@@ -2259,6 +2413,61 @@ return PageResult.of(list);
     </if>
 </where>
 ```
+
+### 10.6 日期验证与错误提示
+
+**实现原理**：
+1. 应用层验证：在Service层检查日期逻辑
+2. 数据库层验证：通过触发器强制执行
+3. 详细的错误提示：包含具体的日期信息
+
+**应用层验证示例**：
+```java
+// BandMemberServiceImpl.java
+// 检查加入日期不能早于乐队成立日期
+if (member.getJoinDate().before(band.getFoundedAt())) {
+    throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), 
+        String.format("成员加入日期（%s）需要在乐队创建日期（%s）之后", 
+            member.getJoinDate(), band.getFoundedAt()));
+}
+```
+
+**错误提示示例**：
+```
+"成员加入日期（2020-01-01）需要在乐队创建日期（2021-01-01）之后"
+"专辑发行日期（2019-05-10）需要在乐队创建日期（2020-03-15）之后"
+"演唱会日期（2018-12-25）需要在乐队创建日期（2019-06-01）之后"
+```
+
+**数据库层验证（触发器）**：
+```sql
+-- 成员加入日期约束（INSERT）
+DROP TRIGGER IF EXISTS trg_member_check_join_date_insert;
+DELIMITER $
+CREATE TRIGGER trg_member_check_join_date_insert
+BEFORE INSERT ON Member
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查加入日期是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND NEW.join_date < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '成员加入日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+```
+
+**双重验证的优势**：
+- 应用层：提供详细的错误信息，更好的用户体验
+- 数据库层：确保数据完整性，防止绕过应用层的直接操作
+- 两层验证互为补充，确保系统的健壮性
 
 ## 11. 开发规范
 

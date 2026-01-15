@@ -54,4 +54,14 @@ public class BandInfoController {
         bandInfoService.updateBandInfo(bandId, band);
         return Result.success("更新成功");
     }
+
+    /**
+     * 解散乐队
+     */
+    @PutMapping("/{bandId}/disband")
+    public Result<Void> disbandBand(@PathVariable("bandId") Long bandId) {
+        log.info("乐队解散自己: {}", bandId);
+        bandInfoService.disbandBand(bandId);
+        return Result.success("解散乐队成功");
+    }
 }

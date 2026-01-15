@@ -131,6 +131,15 @@ public class BandUserServiceImpl implements BandUserService {
         log.info("添加成员: bandId={}, name={}", member.getBandId(), member.getName());
         DataSourceContextHolder.setDataSourceType("band");
         
+        // 检查乐队是否已解散
+        Band band = bandMapper.selectById(member.getBandId());
+        if (band == null) {
+            throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+        }
+        if ("Y".equals(band.getIsDisbanded())) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "该乐队已解散，无法添加成员");
+        }
+        
         int result = memberMapper.insert(member);
         if (result <= 0) {
             throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "添加成员失败");
@@ -205,6 +214,15 @@ public class BandUserServiceImpl implements BandUserService {
     public Long addAlbum(Album album) {
         log.info("添加专辑: bandId={}, title={}", album.getBandId(), album.getTitle());
         DataSourceContextHolder.setDataSourceType("band");
+        
+        // 检查乐队是否已解散
+        Band band = bandMapper.selectById(album.getBandId());
+        if (band == null) {
+            throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+        }
+        if ("Y".equals(band.getIsDisbanded())) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "该乐队已解散，无法添加专辑");
+        }
         
         int result = albumMapper.insert(album);
         if (result <= 0) {
@@ -329,6 +347,15 @@ public class BandUserServiceImpl implements BandUserService {
         log.info("添加歌曲: bandId={}, title={}", bandId, song.getTitle());
         DataSourceContextHolder.setDataSourceType("band");
         
+        // 检查乐队是否已解散
+        Band band = bandMapper.selectById(bandId);
+        if (band == null) {
+            throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+        }
+        if ("Y".equals(band.getIsDisbanded())) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "该乐队已解散，无法添加歌曲");
+        }
+        
         // 验证专辑属于该乐队
         if (song.getAlbumId() == null) {
             throw new BusinessException(ErrorCode.PARAM_ERROR.getCode(), "专辑ID不能为空");
@@ -447,6 +474,15 @@ public class BandUserServiceImpl implements BandUserService {
     public Long addConcert(Concert concert) {
         log.info("添加演唱会: bandId={}, title={}", concert.getBandId(), concert.getTitle());
         DataSourceContextHolder.setDataSourceType("band");
+        
+        // 检查乐队是否已解散
+        Band band = bandMapper.selectById(concert.getBandId());
+        if (band == null) {
+            throw new BusinessException(ErrorCode.BAND_NOT_FOUND);
+        }
+        if ("Y".equals(band.getIsDisbanded())) {
+            throw new BusinessException(ErrorCode.OPERATION_FAILED.getCode(), "该乐队已解散，无法添加演唱会");
+        }
         
         int result = concertMapper.insert(concert);
         if (result <= 0) {

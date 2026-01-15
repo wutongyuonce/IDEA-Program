@@ -32,9 +32,12 @@ CREATE TABLE Band (
     intro TEXT,
     leader_member_id BIGINT DEFAULT NULL,
     member_count INT NOT NULL DEFAULT 0,
+    is_disbanded ENUM('N', 'Y') NOT NULL DEFAULT 'N' COMMENT '是否已解散：N-未解散，Y-已解散',
+    disbanded_at DATE NULL COMMENT '解散日期',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_founded_at (founded_at)
+    INDEX idx_founded_at (founded_at),
+    INDEX idx_is_disbanded (is_disbanded)
 ) ENGINE=InnoDB COMMENT='乐队信息表';
 
 -- 成员表
@@ -783,6 +786,56 @@ UPDATE Album a SET avg_score = (
     WHERE ar.album_id = a.album_id
 ) WHERE album_id IN (SELECT DISTINCT album_id FROM AlbumReview);
 
+-- ============================================
+-- 3. 添加解散状态字段（用于现有数据库升级）
+-- ============================================
+
+-- 检查字段是否已存在，如果不存在则添加
+SET @col_exists = 0;
+SELECT COUNT(*) INTO @col_exists 
+FROM information_schema.COLUMNS 
+WHERE TABLE_SCHEMA = 'band_management' 
+  AND TABLE_NAME = 'Band' 
+  AND COLUMN_NAME = 'is_disbanded';
+
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE Band ADD COLUMN is_disbanded ENUM(''N'', ''Y'') NOT NULL DEFAULT ''N'' COMMENT ''是否已解散：N-未解散，Y-已解散'' AFTER member_count',
+    'SELECT ''字段 is_disbanded 已存在，跳过添加'' AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists = 0;
+SELECT COUNT(*) INTO @col_exists 
+FROM information_schema.COLUMNS 
+WHERE TABLE_SCHEMA = 'band_management' 
+  AND TABLE_NAME = 'Band' 
+  AND COLUMN_NAME = 'disbanded_at';
+
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE Band ADD COLUMN disbanded_at DATE NULL COMMENT ''解散日期'' AFTER is_disbanded',
+    'SELECT ''字段 disbanded_at 已存在，跳过添加'' AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 添加索引（如果不存在）
+SET @index_exists = 0;
+SELECT COUNT(*) INTO @index_exists 
+FROM information_schema.STATISTICS 
+WHERE TABLE_SCHEMA = 'band_management' 
+  AND TABLE_NAME = 'Band' 
+  AND INDEX_NAME = 'idx_is_disbanded';
+
+SET @sql = IF(@index_exists = 0,
+    'ALTER TABLE Band ADD INDEX idx_is_disbanded (is_disbanded)',
+    'SELECT ''索引 idx_is_disbanded 已存在，跳过添加'' AS message');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SELECT '✓ 乐队解散状态字段添加完成' AS status;
+
 -- 验证数据
 SELECT '=== 数据库创建完成 ===' AS status;
 SELECT '乐队数量：', COUNT(*) FROM Band;
@@ -792,3 +845,4 @@ SELECT '歌曲数量：', COUNT(*) FROM Song;
 SELECT '演唱会数量：', COUNT(*) FROM Concert;
 SELECT '歌迷数量：', COUNT(*) FROM Fan;
 SELECT '乐评数量：', COUNT(*) FROM AlbumReview;
+

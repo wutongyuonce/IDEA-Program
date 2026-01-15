@@ -325,7 +325,144 @@ END$$
 DELIMITER ;
 
 -- ============================================
--- 4. 验证触发器（可选测试）
+-- 4. 日期完整性约束触发器
+-- 确保成员加入日期、专辑发行日期、演唱会日期不早于乐队成立日期
+-- ============================================
+
+-- 4.1 成员加入日期约束（INSERT）
+DROP TRIGGER IF EXISTS trg_member_check_join_date_insert;
+DELIMITER $
+CREATE TRIGGER trg_member_check_join_date_insert
+BEFORE INSERT ON Member
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查加入日期是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND NEW.join_date < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '成员加入日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+
+-- 4.2 成员加入日期约束（UPDATE）
+DROP TRIGGER IF EXISTS trg_member_check_join_date_update;
+DELIMITER $
+CREATE TRIGGER trg_member_check_join_date_update
+BEFORE UPDATE ON Member
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期（如果更换了乐队，使用新乐队的成立日期）
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查加入日期是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND NEW.join_date < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '成员加入日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+
+-- 4.3 专辑发行日期约束（INSERT）
+DROP TRIGGER IF EXISTS trg_album_check_release_date_insert;
+DELIMITER $
+CREATE TRIGGER trg_album_check_release_date_insert
+BEFORE INSERT ON Album
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查发行日期是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND NEW.release_date < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '专辑发行日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+
+-- 4.4 专辑发行日期约束（UPDATE）
+DROP TRIGGER IF EXISTS trg_album_check_release_date_update;
+DELIMITER $
+CREATE TRIGGER trg_album_check_release_date_update
+BEFORE UPDATE ON Album
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期（如果更换了乐队，使用新乐队的成立日期）
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查发行日期是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND NEW.release_date < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '专辑发行日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+
+-- 4.5 演唱会日期约束（INSERT）
+DROP TRIGGER IF EXISTS trg_concert_check_event_time_insert;
+DELIMITER $
+CREATE TRIGGER trg_concert_check_event_time_insert
+BEFORE INSERT ON Concert
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查演出时间是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND DATE(NEW.event_time) < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '演唱会日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+
+-- 4.6 演唱会日期约束（UPDATE）
+DROP TRIGGER IF EXISTS trg_concert_check_event_time_update;
+DELIMITER $
+CREATE TRIGGER trg_concert_check_event_time_update
+BEFORE UPDATE ON Concert
+FOR EACH ROW
+BEGIN
+    DECLARE band_founded_date DATE;
+    
+    -- 获取乐队成立日期（如果更换了乐队，使用新乐队的成立日期）
+    SELECT founded_at INTO band_founded_date
+    FROM Band
+    WHERE band_id = NEW.band_id;
+    
+    -- 检查演出时间是否早于乐队成立日期
+    IF band_founded_date IS NOT NULL AND DATE(NEW.event_time) < band_founded_date THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = '演唱会日期不能早于乐队成立日期';
+    END IF;
+END$
+DELIMITER ;
+
+-- ============================================
+-- 5. 验证触发器（可选测试）
 -- ============================================
 -- 注意：以下测试代码仅用于验证触发器功能，不是必须执行的
 -- 如果只是初始化数据库，可以跳过此部分
@@ -428,7 +565,7 @@ SELECT '清理完成' AS status;
 */
 
 -- ============================================
--- 5. 修正现有数据的成员人数
+-- 6. 修正现有数据的成员人数
 -- ============================================
 SELECT '=== 修正现有数据的成员人数 ===' AS title;
 
@@ -461,6 +598,7 @@ SELECT '✓ 成员人数自动维护触发器已创建' AS item
 UNION ALL SELECT '✓ 专辑排行榜自动更新触发器已创建'
 UNION ALL SELECT '✓ 队长约束触发器已创建'
 UNION ALL SELECT '✓ 成员时间重叠约束触发器已创建'
+UNION ALL SELECT '✓ 日期完整性约束触发器已创建'
 UNION ALL SELECT '✓ 现有数据已修正';
 
 -- ============================================
@@ -487,6 +625,12 @@ UNION ALL SELECT '✓ 现有数据已修正';
    - 添加成员时：检查同一人是否在同一时间段加入多个乐队
    - 更新成员时：检查修改后是否导致时间重叠
    - 如果重叠，抛出错误：A person cannot join multiple bands at the same time
+
+5. 日期完整性约束
+   - 成员加入日期约束：成员的加入日期（join_date）必须 >= 乐队成立日期（founded_at）
+   - 专辑发行日期约束：专辑的发行日期（release_date）必须 >= 乐队成立日期（founded_at）
+   - 演唱会日期约束：演唱会的演出时间（event_time的日期部分）必须 >= 乐队成立日期（founded_at）
+   - 如果违反约束，分别抛出对应错误信息
 
 测试方法：
 - 取消注释第4部分的测试代码，逐个执行测试场景

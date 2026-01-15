@@ -76,6 +76,8 @@ public class AuthController {
         String password = (String) params.get("password");
         
         log.info("乐队用户注册请求: name={}", name);
+        // 在调用服务方法之前设置数据源为ADMIN，确保整个事务使用admin数据源
+        com.band.management.config.DataSourceContextHolder.setDataSourceType("ADMIN");
         com.band.management.vo.RegisterResponse response = authService.registerBand(name, foundedAt, intro, password);
         return Result.success("注册成功", response);
     }
@@ -93,6 +95,8 @@ public class AuthController {
         String password = (String) params.get("password");
         
         log.info("歌迷用户注册请求: name={}", name);
+        // 在调用服务方法之前设置数据源为ADMIN，确保整个事务使用admin数据源
+        com.band.management.config.DataSourceContextHolder.setDataSourceType("ADMIN");
         com.band.management.vo.RegisterResponse response = authService.registerFan(name, gender, age, occupation, education, password);
         return Result.success("注册成功", response);
     }
