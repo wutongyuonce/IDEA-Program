@@ -389,6 +389,42 @@ Cookie: JSESSIONID=xxx  # 登录后自动设置
 
 ---
 
+#### 2.1.9 解散乐队
+
+**接口**: `PUT /api/admin/bands/{bandId}/disband`
+
+**描述**: 解散指定乐队，自动将所有未离队成员设置为已离队
+
+**请求参数**:
+- 路径参数：`bandId` - 乐队ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "解散乐队成功",
+  "data": null
+}
+```
+
+**功能说明**:
+- 设置乐队状态为已解散（`isDisbanded = 'Y'`）
+- 设置解散日期为当前日期
+- 将所有未离队成员（`leaveDate IS NULL`）设置为已离队
+- 成员离队日期设置为解散日期
+- 已解散的乐队不能重复解散
+
+**错误响应**:
+```json
+{
+  "code": 1001,
+  "message": "该乐队已经解散",
+  "data": null
+}
+```
+
+---
+
 ### 2.2 成员管理
 
 #### 2.2.1 获取所有成员（分页）
@@ -888,6 +924,42 @@ Cookie: JSESSIONID=xxx  # 登录后自动设置
 {
   "code": 1001,
   "message": "原密码错误",
+  "data": null
+}
+```
+
+---
+
+#### 3.1.6 解散乐队
+
+**接口**: `PUT /api/band/info/{bandId}/disband`
+
+**描述**: 解散当前登录的乐队，自动将所有未离队成员设置为已离队
+
+**请求参数**:
+- 路径参数：`bandId` - 乐队ID
+
+**响应示例**:
+```json
+{
+  "code": 200,
+  "message": "解散乐队成功",
+  "data": null
+}
+```
+
+**功能说明**:
+- 设置乐队状态为已解散（`isDisbanded = 'Y'`）
+- 设置解散日期为当前日期
+- 将所有未离队成员（`leaveDate IS NULL`）设置为已离队
+- 成员离队日期设置为解散日期
+- 已解散的乐队不能重复解散
+
+**错误响应**:
+```json
+{
+  "code": 1001,
+  "message": "该乐队已经解散",
   "data": null
 }
 ```
@@ -1988,7 +2060,9 @@ Cookie: JSESSIONID=xxx  # 登录后自动设置
   "foundedAt": "2007-06-15",
   "intro": "中国内地流行摇滚乐队",
   "leaderMemberId": 1,
-  "memberCount": 4
+  "memberCount": 4,
+  "isDisbanded": "N",
+  "disbandedAt": null
 }
 ```
 
@@ -1999,7 +2073,15 @@ Cookie: JSESSIONID=xxx  # 登录后自动设置
 | foundedAt | Date | 成立日期 |
 | intro | String | 乐队简介 |
 | leaderMemberId | Long | 队长成员ID |
-| memberCount | Integer | 成员人数（自动维护） |
+| memberCount | Integer | 成员人数（自动维护，只统计在队成员） |
+| isDisbanded | String | 是否已解散：'Y'-已解散，'N'-未解散 |
+| disbandedAt | Date | 解散日期（未解散时为NULL） |
+
+**解散功能说明**:
+- 解散乐队时，自动将所有未离队成员设置为已离队
+- 成员离队日期自动设置为乐队解散日期
+- 已解散的乐队不能重复解散
+- 管理员可以编辑已解散乐队的解散日期，系统会同步更新相关成员的离队日期
 
 ---
 
@@ -2030,6 +2112,12 @@ Cookie: JSESSIONID=xxx  # 登录后自动设置
 | role | String | 乐队分工 |
 | joinDate | Date | 加入日期 |
 | leaveDate | Date | 离队日期（NULL表示在队） |
+
+**已解散乐队成员约束**:
+- 为已解散的乐队添加成员时，离队日期必填
+- 离队日期不能晚于乐队解散日期
+- 此约束仅在应用层实施（Admin Privilege Mode）
+- 管理员可以为已解散乐队添加成员，用于历史数据修正
 
 ---
 

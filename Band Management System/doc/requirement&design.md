@@ -54,7 +54,7 @@
 
 * 实体与主键
 
-  * Band(band_id, name, founded_at, intro, leader_member_id, member_count)；leader_member_id 自反指向成员关系。
+  * Band(band_id, name, founded_at, intro, leader_member_id, member_count, is_disbanded, disbanded_at)；leader_member_id 自反指向成员关系，is_disbanded 标识乐队是否已解散，disbanded_at 记录解散日期。
 
   - Member(member_id, name, gender, birth_date/age, role, join_date, leave_date, band_id)；join_date、leave_date 均必填。
 
@@ -81,7 +81,7 @@
 
 * 核心实体表
   - User(user_id BIGINT PK, username VARCHAR(50) NOT NULL UNIQUE, password VARCHAR(255) NOT NULL, role ENUM('ADMIN','BAND','FAN') NOT NULL, related_id BIGINT NULL, status TINYINT NOT NULL DEFAULT 1, created_at/updated_at TIMESTAMP)，在 username、role、related_id 上单独建索引，related_id 分别指向 Band 或 Fan（管理员为空）。
-  - Band(band_id BIGINT PK, name VARCHAR(100) NOT NULL UNIQUE, founded_at DATE NOT NULL, intro TEXT, leader_member_id BIGINT FK→Member.member_id, member_count INT NOT NULL DEFAULT 0, created_at/updated_at TIMESTAMP，idx_founded_at)；leader 通过外键 RESTRICT 约束，member_count 由触发器仅统计 leave_date IS NULL 的在队成员。
+  - Band(band_id BIGINT PK, name VARCHAR(100) NOT NULL UNIQUE, founded_at DATE NOT NULL, intro TEXT, leader_member_id BIGINT FK→Member.member_id, member_count INT NOT NULL DEFAULT 0, is_disbanded CHAR(1) NOT NULL DEFAULT 'N', disbanded_at DATE NULL, created_at/updated_at TIMESTAMP，idx_founded_at)；leader 通过外键 RESTRICT 约束，member_count 由触发器仅统计 leave_date IS NULL 的在队成员，is_disbanded 标识乐队是否已解散（'Y'/'N'），disbanded_at 记录解散日期。
   - Member(member_id BIGINT PK, person_id BIGINT, band_id BIGINT NOT NULL, name VARCHAR(50) NOT NULL, gender ENUM('M','F','O') NOT NULL, birth_date DATE NOT NULL, role VARCHAR(50) NOT NULL, join_date DATE NOT NULL, leave_date DATE NULL, created_at/updated_at TIMESTAMP, FK→Band(band_id))；CHECK(leave_date IS NULL OR leave_date >= join_date)，person_id 追踪同一自然人跨阶段任职。
   - Album(album_id BIGINT PK, band_id BIGINT NOT NULL, title VARCHAR(200) NOT NULL, release_date DATE NOT NULL, copywriting TEXT, avg_score DECIMAL(3,1) NULL, created_at/updated_at TIMESTAMP, UNIQUE(band_id, title) 以及 idx_band_id/idx_release_date/idx_avg_score)。
   - Song(song_id BIGINT PK, album_id BIGINT NOT NULL, title VARCHAR(200) NOT NULL, lyricist/composer VARCHAR(100), created_at/updated_at TIMESTAMP, UNIQUE(album_id, title) 与 idx_album_id)。
@@ -102,6 +102,12 @@
   - 用户定义完整性：
     - CHECK 约束：`Fan.age BETWEEN 0 AND 120`、`leave_date IS NULL OR leave_date >= join_date`、`rating BETWEEN 1 AND 10`、`rating * 2 = FLOOR(rating * 2)` 等；性别统一限定在 ENUM('M','F','O')。
     - UNIQUE / 组合主键：Band.name、Album(band_id,title)、Song(album_id,title)、Concert(band_id,title,event_time)、AlbumReview(fan_id,album_id)、ConcertAttendance(fan_id,concert_id) 以及各 FanFavorite 表的联合主键，防止重复喜好/参演/评论。
+    - 乐队解散约束：
+      - 解散乐队时，自动将所有未离队成员（leave_date IS NULL）设置为已离队，离队日期设置为解散日期
+      - 已解散的乐队不能重复解散
+      - 管理员编辑已解散乐队的解散日期时，系统自动更新离队日期与旧解散日期一致的成员
+      - 为已解散乐队添加成员时（Admin Privilege Mode），离队日期必填且不能晚于乐队解散日期
+      - 此约束在应用层实施，用于历史数据修正
   - 触发器与过程：
     - `trg_member_insert/update/delete` 自动维护 Band.member_count，仅统计仍在队成员。
     - `trg_band_check_leader` 校验 leader 属于本队。
@@ -180,6 +186,8 @@
 * 创建一张专辑排行表，收录乐评分数前十的专辑，并且创建触发器如下：当专辑分数更新时，及时更新此排行表。进行乐迷打分操作，验证触发器有效性。
 * **日期完整性约束**：确保成员加入日期、专辑发行日期、演唱会日期不早于乐队成立日期，通过触发器在数据库层面强制执行，并在应用层提供友好的错误提示。
 
+`database_integrity.sql`
+
 触发器功能说明：
 
 1. 成员人数自动维护
@@ -214,749 +222,6 @@
      - 插入演唱会时：检查演出时间是否早于乐队成立日期
      - 更新演唱会时：检查演出时间是否早于乐队成立日期
      - 如果违反，抛出错误：演唱会日期不能早于乐队成立日期
-
-`database_integrity.sql`
-
-```sql
--- ============================================
--- 数据库完整性要求
--- ============================================
-
-USE band_management;
-
--- ============================================
--- 1. 成员人数维护触发器
--- 修改触发器逻辑，只统计在队成员（leave_date IS NULL）
--- ============================================
-
--- 1.1 成员插入时更新乐队成员人数
-DROP TRIGGER IF EXISTS trg_member_insert_update_count;
-DELIMITER $
-CREATE TRIGGER trg_member_insert_update_count
-AFTER INSERT ON Member
-FOR EACH ROW
-BEGIN
-    -- 更新乐队成员人数（只统计在队成员）
-    UPDATE Band 
-    SET member_count = (
-        SELECT COUNT(*) 
-        FROM Member 
-        WHERE band_id = NEW.band_id AND leave_date IS NULL
-    )
-    WHERE band_id = NEW.band_id;
-END$
-DELIMITER ;
-
--- 1.2 成员删除时更新乐队成员人数
-DROP TRIGGER IF EXISTS trg_member_delete_update_count;
-DELIMITER $
-CREATE TRIGGER trg_member_delete_update_count
-AFTER DELETE ON Member
-FOR EACH ROW
-BEGIN
-    -- 更新乐队成员人数（只统计在队成员）
-    UPDATE Band 
-    SET member_count = (
-        SELECT COUNT(*) 
-        FROM Member 
-        WHERE band_id = OLD.band_id AND leave_date IS NULL
-    )
-    WHERE band_id = OLD.band_id;
-END$
-DELIMITER ;
-
--- 1.3 成员更新时更新相关乐队成员人数
-DROP TRIGGER IF EXISTS trg_member_update_band;
-DELIMITER $
-CREATE TRIGGER trg_member_update_band
-AFTER UPDATE ON Member
-FOR EACH ROW
-BEGIN
-    -- 如果成员更换了乐队或离队状态改变
-    IF OLD.band_id != NEW.band_id OR 
-       (OLD.leave_date IS NULL AND NEW.leave_date IS NOT NULL) OR
-       (OLD.leave_date IS NOT NULL AND NEW.leave_date IS NULL) THEN
-        
-        -- 更新旧乐队成员人数
-        UPDATE Band 
-        SET member_count = (
-            SELECT COUNT(*) 
-            FROM Member 
-            WHERE band_id = OLD.band_id AND leave_date IS NULL
-        )
-        WHERE band_id = OLD.band_id;
-        
-        -- 如果换了乐队，也更新新乐队成员人数
-        IF OLD.band_id != NEW.band_id THEN
-            UPDATE Band 
-            SET member_count = (
-                SELECT COUNT(*) 
-                FROM Member 
-                WHERE band_id = NEW.band_id AND leave_date IS NULL
-            )
-            WHERE band_id = NEW.band_id;
-        END IF;
-    END IF;
-END$
-DELIMITER ;
-
--- ============================================
--- 2. 专辑排行榜表和触发器
--- ============================================
-
--- 2.1 创建专辑排行榜表
-DROP TABLE IF EXISTS AlbumRanking;
-CREATE TABLE AlbumRanking (
-    ranking_id INT AUTO_INCREMENT PRIMARY KEY,
-    album_id BIGINT NOT NULL,
-    band_id BIGINT NOT NULL,
-    album_title VARCHAR(200) NOT NULL,
-    band_name VARCHAR(100) NOT NULL,
-    avg_score DECIMAL(3,1) NOT NULL,
-    review_count INT NOT NULL DEFAULT 0,
-    release_date DATE NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_album (album_id),
-    INDEX idx_avg_score (avg_score DESC),
-    CONSTRAINT fk_ranking_album FOREIGN KEY (album_id) REFERENCES Album(album_id) 
-        ON UPDATE CASCADE ON DELETE CASCADE,
-    CONSTRAINT fk_ranking_band FOREIGN KEY (band_id) REFERENCES Band(band_id) 
-        ON UPDATE CASCADE ON DELETE CASCADE
-) ENGINE=InnoDB COMMENT='专辑排行榜（前10名）';
-
--- 授予 fan_user 对 AlbumRanking 表的查询权限
-GRANT SELECT ON band_management.AlbumRanking TO 'fan_user'@'localhost';
-
--- 2.2 初始化排行榜数据
-INSERT INTO AlbumRanking (album_id, band_id, album_title, band_name, avg_score, review_count, release_date)
-SELECT 
-    a.album_id,
-    a.band_id,
-    a.title,
-    b.name,
-    COALESCE(a.avg_score, 0),
-    COUNT(ar.review_id),
-    a.release_date
-FROM Album a
-JOIN Band b ON a.band_id = b.band_id
-LEFT JOIN AlbumReview ar ON a.album_id = ar.album_id
-GROUP BY a.album_id, a.band_id, a.title, b.name, a.avg_score, a.release_date
-HAVING COALESCE(a.avg_score, 0) > 0
-ORDER BY COALESCE(a.avg_score, 0) DESC, COUNT(ar.review_id) DESC
-LIMIT 10;
-
--- 2.3 创建更新排行榜的存储过程
-DROP PROCEDURE IF EXISTS sp_update_album_ranking;
-DELIMITER $
-CREATE PROCEDURE sp_update_album_ranking()
-BEGIN
-    -- 清空排行榜（使用DELETE而不是TRUNCATE，避免触发器中的隐式提交问题）
-    DELETE FROM AlbumRanking;
-    
-    -- 重新插入前10名
-    INSERT INTO AlbumRanking (album_id, band_id, album_title, band_name, avg_score, review_count, release_date)
-    SELECT 
-        a.album_id,
-        a.band_id,
-        a.title,
-        b.name,
-        COALESCE(a.avg_score, 0),
-        COUNT(ar.review_id),
-        a.release_date
-    FROM Album a
-    JOIN Band b ON a.band_id = b.band_id
-    LEFT JOIN AlbumReview ar ON a.album_id = ar.album_id
-    GROUP BY a.album_id, a.band_id, a.title, b.name, a.avg_score, a.release_date
-    HAVING COALESCE(a.avg_score, 0) > 0
-    ORDER BY COALESCE(a.avg_score, 0) DESC, COUNT(ar.review_id) DESC
-    LIMIT 10;
-END$
-DELIMITER ;
-
--- 2.4 乐评插入时更新专辑平均分和排行榜
-DROP TRIGGER IF EXISTS trg_review_insert_update_album;
-DELIMITER $
-CREATE TRIGGER trg_review_insert_update_album
-AFTER INSERT ON AlbumReview
-FOR EACH ROW
-BEGIN
-    -- 更新专辑平均分
-    UPDATE Album 
-    SET avg_score = (
-        SELECT ROUND(AVG(rating), 1)
-        FROM AlbumReview
-        WHERE album_id = NEW.album_id
-    )
-    WHERE album_id = NEW.album_id;
-    
-    -- 更新排行榜
-    CALL sp_update_album_ranking();
-END$
-DELIMITER ;
-
--- 2.5 乐评更新时更新专辑平均分和排行榜
-DROP TRIGGER IF EXISTS trg_review_update_album;
-DELIMITER $
-CREATE TRIGGER trg_review_update_album
-AFTER UPDATE ON AlbumReview
-FOR EACH ROW
-BEGIN
-    -- 更新专辑平均分
-    UPDATE Album 
-    SET avg_score = (
-        SELECT ROUND(AVG(rating), 1)
-        FROM AlbumReview
-        WHERE album_id = NEW.album_id
-    )
-    WHERE album_id = NEW.album_id;
-    
-    -- 如果评论涉及不同专辑，也更新旧专辑
-    IF OLD.album_id != NEW.album_id THEN
-        UPDATE Album 
-        SET avg_score = (
-            SELECT ROUND(AVG(rating), 1)
-            FROM AlbumReview
-            WHERE album_id = OLD.album_id
-        )
-        WHERE album_id = OLD.album_id;
-    END IF;
-    
-    -- 更新排行榜
-    CALL sp_update_album_ranking();
-END$
-DELIMITER ;
-
--- 2.6 乐评删除时更新专辑平均分和排行榜
-DROP TRIGGER IF EXISTS trg_review_delete_update_album;
-DELIMITER $
-CREATE TRIGGER trg_review_delete_update_album
-AFTER DELETE ON AlbumReview
-FOR EACH ROW
-BEGIN
-    -- 更新专辑平均分
-    UPDATE Album 
-    SET avg_score = (
-        SELECT ROUND(AVG(rating), 1)
-        FROM AlbumReview
-        WHERE album_id = OLD.album_id
-    )
-    WHERE album_id = OLD.album_id;
-    
-    -- 更新排行榜
-    CALL sp_update_album_ranking();
-END$
-DELIMITER ;
-
--- ============================================
--- 3. 额外的完整性约束触发器
--- ============================================
-
--- 3.1 确保队长是该乐队的成员
-DROP TRIGGER IF EXISTS trg_band_check_leader;
-DELIMITER $
-CREATE TRIGGER trg_band_check_leader
-BEFORE UPDATE ON Band
-FOR EACH ROW
-BEGIN
-    DECLARE leader_band_id BIGINT;
-    
-    -- 如果设置了队长
-    IF NEW.leader_member_id IS NOT NULL THEN
-        -- 检查队长是否属于该乐队
-        SELECT band_id INTO leader_band_id
-        FROM Member
-        WHERE member_id = NEW.leader_member_id;
-        
-        IF leader_band_id IS NULL OR leader_band_id != NEW.band_id THEN
-            SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = '队长必须是该乐队的成员';
-        END IF;
-    END IF;
-END$
-DELIMITER ;
-
--- 3.2 防止成员在同一时间加入多个乐队（INSERT）
-DROP TRIGGER IF EXISTS trg_member_check_person_overlap_insert;
-DELIMITER $
-CREATE TRIGGER trg_member_check_person_overlap_insert
-BEFORE INSERT ON Member
-FOR EACH ROW
-BEGIN
-    DECLARE overlap_count INT;
-    
-    SELECT COUNT(*) INTO overlap_count
-    FROM Member
-    WHERE person_id = NEW.person_id
-      AND band_id != NEW.band_id
-      AND (
-          (NEW.join_date >= join_date AND (leave_date IS NULL OR NEW.join_date <= leave_date))
-          OR
-          (NEW.leave_date IS NOT NULL AND NEW.leave_date >= join_date AND (leave_date IS NULL OR NEW.leave_date <= leave_date))
-          OR
-          (join_date >= NEW.join_date AND (NEW.leave_date IS NULL OR join_date <= NEW.leave_date))
-          OR
-          (leave_date IS NOT NULL AND leave_date >= NEW.join_date AND (NEW.leave_date IS NULL OR leave_date <= NEW.leave_date))
-      );
-    
-    IF overlap_count > 0 THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'A person cannot join multiple bands at the same time';
-    END IF;
-END$
-DELIMITER ;
-
--- 3.3 防止成员在同一时间加入多个乐队（UPDATE）
-DROP TRIGGER IF EXISTS trg_member_check_person_overlap_update;
-DELIMITER $
-CREATE TRIGGER trg_member_check_person_overlap_update
-BEFORE UPDATE ON Member
-FOR EACH ROW
-BEGIN
-    DECLARE overlap_count INT;
-    
-    IF NEW.person_id != OLD.person_id
-       OR NEW.join_date != OLD.join_date
-       OR (NEW.leave_date IS NULL AND OLD.leave_date IS NOT NULL)
-       OR (NEW.leave_date IS NOT NULL AND OLD.leave_date IS NULL)
-       OR (NEW.leave_date IS NOT NULL AND OLD.leave_date IS NOT NULL AND NEW.leave_date != OLD.leave_date)
-       OR NEW.band_id != OLD.band_id THEN
-        
-        SELECT COUNT(*) INTO overlap_count
-        FROM Member
-        WHERE person_id = NEW.person_id
-          AND band_id != NEW.band_id
-          AND member_id != OLD.member_id
-          AND (
-              (NEW.join_date >= join_date AND (leave_date IS NULL OR NEW.join_date <= leave_date))
-              OR
-              (NEW.leave_date IS NOT NULL AND NEW.leave_date >= join_date AND (leave_date IS NULL OR NEW.leave_date <= leave_date))
-              OR
-              (join_date >= NEW.join_date AND (NEW.leave_date IS NULL OR join_date <= NEW.leave_date))
-              OR
-              (leave_date IS NOT NULL AND leave_date >= NEW.join_date AND (NEW.leave_date IS NULL OR leave_date <= NEW.leave_date))
-          );
-        
-        IF overlap_count > 0 THEN
-            SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'A person cannot join multiple bands at the same time';
-        END IF;
-    END IF;
-END$
-DELIMITER ;
-
--- ============================================
--- 4. 日期完整性约束触发器
--- 确保成员加入日期、专辑发行日期、演唱会日期不早于乐队成立日期
--- ============================================
-
--- 4.1 成员加入日期约束（INSERT）
-DROP TRIGGER IF EXISTS trg_member_check_join_date_insert;
-DELIMITER $
-CREATE TRIGGER trg_member_check_join_date_insert
-BEFORE INSERT ON Member
-FOR EACH ROW
-BEGIN
-    DECLARE band_founded_date DATE;
-    
-    -- 获取乐队成立日期
-    SELECT founded_at INTO band_founded_date
-    FROM Band
-    WHERE band_id = NEW.band_id;
-    
-    -- 检查加入日期是否早于乐队成立日期
-    IF band_founded_date IS NOT NULL AND NEW.join_date < band_founded_date THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '成员加入日期不能早于乐队成立日期';
-    END IF;
-END$
-DELIMITER ;
-
--- 4.2 成员加入日期约束（UPDATE）
-DROP TRIGGER IF EXISTS trg_member_check_join_date_update;
-DELIMITER $
-CREATE TRIGGER trg_member_check_join_date_update
-BEFORE UPDATE ON Member
-FOR EACH ROW
-BEGIN
-    DECLARE band_founded_date DATE;
-    
-    -- 获取乐队成立日期（如果更换了乐队，使用新乐队的成立日期）
-    SELECT founded_at INTO band_founded_date
-    FROM Band
-    WHERE band_id = NEW.band_id;
-    
-    -- 检查加入日期是否早于乐队成立日期
-    IF band_founded_date IS NOT NULL AND NEW.join_date < band_founded_date THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '成员加入日期不能早于乐队成立日期';
-    END IF;
-END$
-DELIMITER ;
-
--- 4.3 专辑发行日期约束（INSERT）
-DROP TRIGGER IF EXISTS trg_album_check_release_date_insert;
-DELIMITER $
-CREATE TRIGGER trg_album_check_release_date_insert
-BEFORE INSERT ON Album
-FOR EACH ROW
-BEGIN
-    DECLARE band_founded_date DATE;
-    
-    -- 获取乐队成立日期
-    SELECT founded_at INTO band_founded_date
-    FROM Band
-    WHERE band_id = NEW.band_id;
-    
-    -- 检查发行日期是否早于乐队成立日期
-    IF band_founded_date IS NOT NULL AND NEW.release_date < band_founded_date THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '专辑发行日期不能早于乐队成立日期';
-    END IF;
-END$
-DELIMITER ;
-
--- 4.4 专辑发行日期约束（UPDATE）
-DROP TRIGGER IF EXISTS trg_album_check_release_date_update;
-DELIMITER $
-CREATE TRIGGER trg_album_check_release_date_update
-BEFORE UPDATE ON Album
-FOR EACH ROW
-BEGIN
-    DECLARE band_founded_date DATE;
-    
-    -- 获取乐队成立日期（如果更换了乐队，使用新乐队的成立日期）
-    SELECT founded_at INTO band_founded_date
-    FROM Band
-    WHERE band_id = NEW.band_id;
-    
-    -- 检查发行日期是否早于乐队成立日期
-    IF band_founded_date IS NOT NULL AND NEW.release_date < band_founded_date THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '专辑发行日期不能早于乐队成立日期';
-    END IF;
-END$
-DELIMITER ;
-
--- 4.5 演唱会日期约束（INSERT）
-DROP TRIGGER IF EXISTS trg_concert_check_event_time_insert;
-DELIMITER $
-CREATE TRIGGER trg_concert_check_event_time_insert
-BEFORE INSERT ON Concert
-FOR EACH ROW
-BEGIN
-    DECLARE band_founded_date DATE;
-    
-    -- 获取乐队成立日期
-    SELECT founded_at INTO band_founded_date
-    FROM Band
-    WHERE band_id = NEW.band_id;
-    
-    -- 检查演出时间是否早于乐队成立日期
-    IF band_founded_date IS NOT NULL AND DATE(NEW.event_time) < band_founded_date THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '演唱会日期不能早于乐队成立日期';
-    END IF;
-END$
-DELIMITER ;
-
--- 4.6 演唱会日期约束（UPDATE）
-DROP TRIGGER IF EXISTS trg_concert_check_event_time_update;
-DELIMITER $
-CREATE TRIGGER trg_concert_check_event_time_update
-BEFORE UPDATE ON Concert
-FOR EACH ROW
-BEGIN
-    DECLARE band_founded_date DATE;
-    
-    -- 获取乐队成立日期（如果更换了乐队，使用新乐队的成立日期）
-    SELECT founded_at INTO band_founded_date
-    FROM Band
-    WHERE band_id = NEW.band_id;
-    
-    -- 检查演出时间是否早于乐队成立日期
-    IF band_founded_date IS NOT NULL AND DATE(NEW.event_time) < band_founded_date THEN
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = '演唱会日期不能早于乐队成立日期';
-    END IF;
-END$
-DELIMITER ;
-
--- ============================================
--- 5. 验证触发器（可选测试）
--- ============================================
--- 注意：以下测试代码仅用于验证触发器功能，不是必须执行的
--- 如果只是初始化数据库，可以跳过此部分
-
--- 5.1 验证成员人数触发器
--- 测试说明：添加和删除成员时，乐队的member_count应该自动更新
-/*
-SELECT '=== 测试1: 成员人数触发器 ===' AS test_name;
-
--- 查看逃跑计划当前成员数
-SELECT band_id, name, member_count FROM Band WHERE band_id = 1;
-
--- 添加测试成员（在队）
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9998, 1, '测试成员A', 'M', '1990-01-01', '键盘手', '2024-01-01', NULL);
-
--- 应该看到member_count增加1
-SELECT '添加在队成员后:' AS action, band_id, name, member_count FROM Band WHERE band_id = 1;
-
--- 添加已离队成员
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9997, 1, '测试成员B', 'F', '1992-01-01', '和声', '2020-01-01', '2023-12-31');
-
--- member_count不应该变化（因为已离队）
-SELECT '添加离队成员后:' AS action, band_id, name, member_count FROM Band WHERE band_id = 1;
-
--- 清理测试数据
-DELETE FROM Member WHERE person_id IN (9998, 9997);
-SELECT '清理完成' AS status;
-*/
-
--- 5.2 验证专辑排行榜触发器
--- 测试说明：添加、修改、删除乐评时，专辑平均分和排行榜应该自动更新
-/*
-SELECT '=== 测试2: 专辑排行榜触发器 ===' AS test_name;
-
--- 查看当前排行榜前5名
-SELECT 
-    ROW_NUMBER() OVER (ORDER BY avg_score DESC, review_count DESC) AS ranking,
-    album_title,
-    band_name,
-    avg_score,
-    review_count
-FROM AlbumRanking
-ORDER BY avg_score DESC, review_count DESC
-LIMIT 5;
-
--- 查看《世界》专辑当前评分
-SELECT album_id, title, avg_score FROM Album WHERE album_id = 1;
-
--- 添加一条高分乐评
-INSERT INTO AlbumReview (fan_id, album_id, rating, comment, reviewed_at)
-VALUES (11, 1, 10.0, '[测试] 非常棒的专辑！', NOW());
-
--- 应该看到平均分提高，排行榜更新
-SELECT '添加乐评后:' AS action, album_id, title, avg_score FROM Album WHERE album_id = 1;
-
--- 删除测试乐评
-DELETE FROM AlbumReview WHERE comment = '[测试] 非常棒的专辑！';
-SELECT '清理完成' AS status;
-*/
-
--- 5.3 验证队长约束触发器
--- 测试说明：队长必须是本乐队的成员
-/*
-SELECT '=== 测试3: 队长约束触发器 ===' AS test_name;
-
--- 尝试将其他乐队的成员设为队长（应该失败）
--- UPDATE Band SET leader_member_id = 10 WHERE band_id = 1;
--- 预期错误: ERROR 1644 (45000): 队长必须是该乐队的成员
-
-SELECT '如果执行上面注释的UPDATE，会报错：队长必须是该乐队的成员' AS expected_error;
-*/
-
--- 5.4 验证成员时间重叠约束触发器
--- 测试说明：同一个人不能同时在多个乐队
-/*
-SELECT '=== 测试4: 成员时间重叠约束触发器 ===' AS test_name;
-
--- 创建测试成员（已离队）
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9999, 1, '测试成员C', 'M', '1990-01-01', '吉他手', '2020-01-01', '2023-12-31');
-
--- 让同一人加入另一个乐队（时间不重叠，应该成功）
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9999, 2, '测试成员C', 'M', '1990-01-01', '贝斯手', '2024-01-01', NULL);
-
-SELECT '成功：同一人在不同时间段加入不同乐队' AS result;
-
--- 尝试让同一人在重叠时间加入第三个乐队（应该失败）
--- INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
--- VALUES (9999, 3, '测试成员C', 'M', '1990-01-01', '鼓手', '2024-06-01', NULL);
--- 预期错误: ERROR 1644 (45000): A person cannot join multiple bands at the same time
-
-SELECT '如果执行上面注释的INSERT，会报错：A person cannot join multiple bands at the same time' AS expected_error;
-
--- 清理测试数据
-DELETE FROM Member WHERE person_id = 9999;
-SELECT '清理完成' AS status;
-*/
-
--- ============================================
--- 6. 修正现有数据的成员人数
--- ============================================
-SELECT '=== 修正现有数据的成员人数 ===' AS title;
-
--- 更新所有乐队的成员人数（只统计在队成员）
-UPDATE Band b
-SET member_count = (
-    SELECT COUNT(*) 
-    FROM Member m 
-    WHERE m.band_id = b.band_id AND m.leave_date IS NULL
-);
-
-SELECT '✓ 所有乐队的成员人数已重新计算（只统计在队成员）' AS status;
-
--- 验证结果
-SELECT 
-    b.band_id,
-    b.name,
-    b.member_count AS stored_count,
-    (SELECT COUNT(*) FROM Member m WHERE m.band_id = b.band_id AND m.leave_date IS NULL) AS actual_count,
-    CASE 
-        WHEN b.member_count = (SELECT COUNT(*) FROM Member m WHERE m.band_id = b.band_id AND m.leave_date IS NULL)
-        THEN '✓ 一致'
-        ELSE '✗ 不一致'
-    END AS status
-FROM Band b
-ORDER BY b.band_id;
-
-SELECT '=== 数据库完整性约束配置完成 ===' AS final_status;
-SELECT '✓ 成员人数自动维护触发器已创建' AS item
-UNION ALL SELECT '✓ 专辑排行榜自动更新触发器已创建'
-UNION ALL SELECT '✓ 队长约束触发器已创建'
-UNION ALL SELECT '✓ 成员时间重叠约束触发器已创建'
-UNION ALL SELECT '✓ 日期完整性约束触发器已创建'
-UNION ALL SELECT '✓ 现有数据已修正';
-
--- ============================================
--- 使用说明
--- ============================================
-/*
-触发器功能说明：
-
-1. 成员人数自动维护
-   - 添加成员时：自动更新乐队的member_count（只统计在队成员）
-   - 删除成员时：自动更新乐队的member_count
-   - 更新成员时：如果改变乐队或离队状态，自动更新相关乐队的member_count
-
-2. 专辑排行榜自动更新
-   - 添加乐评时：自动更新专辑平均分和排行榜
-   - 修改乐评时：自动更新专辑平均分和排行榜
-   - 删除乐评时：自动更新专辑平均分和排行榜
-
-3. 队长约束
-   - 设置队长时：自动检查队长是否是本乐队成员
-   - 如果不是，抛出错误：队长必须是该乐队的成员
-
-4. 成员时间重叠约束
-   - 添加成员时：检查同一人是否在同一时间段加入多个乐队
-   - 更新成员时：检查修改后是否导致时间重叠
-   - 如果重叠，抛出错误：A person cannot join multiple bands at the same time
-
-5. 日期完整性约束
-   - 成员加入日期约束：成员的加入日期（join_date）必须 >= 乐队成立日期（founded_at）
-   - 专辑发行日期约束：专辑的发行日期（release_date）必须 >= 乐队成立日期（founded_at）
-   - 演唱会日期约束：演唱会的演出时间（event_time的日期部分）必须 >= 乐队成立日期（founded_at）
-   - 如果违反约束，分别抛出对应错误信息
-
-测试方法：
-- 取消注释第5部分的测试代码，逐个执行测试场景
-- 每个测试场景都有详细说明和预期结果
-*/
-```
-
-测试：
-
-```sql
--- ============================================
--- 4. 验证触发器（可选测试）
--- ============================================
--- 注意：以下测试代码仅用于验证触发器功能，不是必须执行的
--- 如果只是初始化数据库，可以跳过此部分
-
--- 4.1 验证成员人数触发器
--- 测试说明：添加和删除成员时，乐队的member_count应该自动更新
-SELECT '=== 测试1: 成员人数触发器 ===' AS test_name;
-
--- 查看逃跑计划当前成员数
-SELECT band_id, name, member_count FROM Band WHERE band_id = 1;
-
--- 添加测试成员（在队）
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9998, 1, '测试成员A', 'M', '1990-01-01', '键盘手', '2024-01-01', NULL);
-
--- 应该看到member_count增加1
-SELECT '添加在队成员后:' AS action, band_id, name, member_count FROM Band WHERE band_id = 1;
-
--- 添加已离队成员
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9997, 1, '测试成员B', 'F', '1992-01-01', '和声', '2020-01-01', '2023-12-31');
-
--- member_count不应该变化（因为已离队）
-SELECT '添加离队成员后:' AS action, band_id, name, member_count FROM Band WHERE band_id = 1;
-
--- 清理测试数据
-DELETE FROM Member WHERE person_id IN (9998, 9997);
-SELECT '清理完成' AS status;
-
--- 4.2 验证专辑排行榜触发器
--- 测试说明：添加、修改、删除乐评时，专辑平均分和排行榜应该自动更新
-SELECT '=== 测试2: 专辑排行榜触发器 ===' AS test_name;
-
--- 查看当前排行榜前5名
-SELECT 
-    ROW_NUMBER() OVER (ORDER BY avg_score DESC, review_count DESC) AS ranking,
-    album_title,
-    band_name,
-    avg_score,
-    review_count
-FROM AlbumRanking
-ORDER BY avg_score DESC, review_count DESC
-LIMIT 5;
-
--- 查看《世界》专辑当前评分
-SELECT album_id, title, avg_score FROM Album WHERE album_id = 1;
-
--- 添加一条高分乐评
-INSERT INTO AlbumReview (fan_id, album_id, rating, comment, reviewed_at)
-VALUES (11, 1, 10.0, '[测试] 非常棒的专辑！', NOW());
-
--- 应该看到平均分提高，排行榜更新
-SELECT '添加乐评后:' AS action, album_id, title, avg_score FROM Album WHERE album_id = 1;
-
--- 删除测试乐评
-DELETE FROM AlbumReview WHERE comment = '[测试] 非常棒的专辑！';
-SELECT '清理完成' AS status;
-
--- 4.3 验证队长约束触发器
--- 测试说明：队长必须是本乐队的成员
-SELECT '=== 测试3: 队长约束触发器 ===' AS test_name;
-
--- 尝试将其他乐队的成员设为队长（应该失败）
--- UPDATE Band SET leader_member_id = 10 WHERE band_id = 1;
--- 预期错误: ERROR 1644 (45000): 队长必须是该乐队的成员
-
-SELECT '如果执行上面注释的UPDATE，会报错：队长必须是该乐队的成员' AS expected_error;
-
-
--- 4.4 验证成员时间重叠约束触发器
--- 测试说明：同一个人不能同时在多个乐队
-SELECT '=== 测试4: 成员时间重叠约束触发器 ===' AS test_name;
-
--- 创建测试成员（已离队）
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9999, 1, '测试成员C', 'M', '1990-01-01', '吉他手', '2020-01-01', '2023-12-31');
-
--- 让同一人加入另一个乐队（时间不重叠，应该成功）
-INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
-VALUES (9999, 2, '测试成员C', 'M', '1990-01-01', '贝斯手', '2024-01-01', NULL);
-
-SELECT '成功：同一人在不同时间段加入不同乐队' AS result;
-
--- 尝试让同一人在重叠时间加入第三个乐队（应该失败）
--- INSERT INTO Member (person_id, band_id, name, gender, birth_date, role, join_date, leave_date)
--- VALUES (9999, 3, '测试成员C', 'M', '1990-01-01', '鼓手', '2024-06-01', NULL);
--- 预期错误: ERROR 1644 (45000): A person cannot join multiple bands at the same time
-
-SELECT '如果执行上面注释的INSERT，会报错：A person cannot join multiple bands at the same time' AS expected_error;
-
--- 清理测试数据
-DELETE FROM Member WHERE person_id = 9999;
-SELECT '清理完成' AS status;
-```
 
 #### 7、数据库安全性实施
 
@@ -1044,7 +309,7 @@ SELECT '清理完成' AS status;
 
 * 适用场景：歌迷浏览乐队信息、管理个人喜好、发表乐评、记录演唱会参与
 
-##### 视图机制
+##### 视图机制(实际项目没有用到)
 
 利用视图机制，使某个乐队用户Band1只能查看自己的歌迷信息、乐评信息，并利用视图实现简单的歌迷人数统计、年龄、性别、职业、学历范围统计，最喜欢的歌曲、演唱会统计等。
 
@@ -1060,315 +325,9 @@ SELECT '清理完成' AS status;
 
 `user_verification_tests.sql`
 
-```sql
--- ============================================
--- 用户权限验证测试脚本
--- 测试 admin_user、band_user、fan_user 的权限设置
--- ============================================
-
--- 使用说明：
--- 1. 确保已执行 database_implementation.sql
--- 2. 确保已执行 database_security.sql
--- 3. 本脚本需要以 root 用户身份执行
--- 4. 测试过程中会创建和删除测试数据
-
-USE band_management;
-
--- ============================================
--- 测试准备：创建测试数据
--- ============================================
-
-SELECT '========================================' AS '';
-SELECT '开始用户权限验证测试' AS '';
-SELECT '========================================' AS '';
-
--- ============================================
--- 第一部分：管理员用户 (admin_user) 权限测试
--- ============================================
-
-SELECT '' AS '';
-SELECT '========================================' AS '';
-SELECT '测试 1: 管理员用户 (admin_user) 权限' AS '';
-SELECT '========================================' AS '';
-
--- 测试 1.1: 管理员可以查询所有表
-SELECT '--- 测试 1.1: 管理员查询权限 ---' AS '';
-
--- 切换到 admin_user（注意：需要在新连接中执行）
--- 这里使用注释说明，实际测试需要新建连接
-mysql -u admin_user -pAdmin@123456 band_management -e "
-SELECT '✓ 管理员可以查询 Band 表' AS result, COUNT(*) AS count FROM Band;
-SELECT '✓ 管理员可以查询 Member 表' AS result, COUNT(*) AS count FROM Member;
-SELECT '✓ 管理员可以查询 Fan 表' AS result, COUNT(*) AS count FROM Fan;
-SELECT '✓ 管理员可以查询 Album 表' AS result, COUNT(*) AS count FROM Album;"
-
--- 测试 1.2: 管理员可以插入数据
-SELECT '--- 测试 1.2: 管理员插入权限 ---' AS '';
-mysql -u admin_user -pAdmin@123456 band_management -e "
-INSERT INTO Band (name, founded_at, intro, member_count) 
-VALUES ('测试乐队_admin', '2024-01-01', '管理员测试插入', 0);
-SELECT '✓ 管理员可以插入数据' AS result;"
-
--- 测试 1.3: 管理员可以更新数据
-SELECT '--- 测试 1.3: 管理员更新权限 ---' AS '';
-mysql -u admin_user -pAdmin@123456 band_management -e "
-UPDATE Band SET intro = '管理员测试更新' WHERE name = '测试乐队_admin';
-SELECT '✓ 管理员可以更新数据' AS result;"
-
--- 测试 1.4: 管理员可以删除数据
-SELECT '--- 测试 1.4: 管理员删除权限 ---' AS '';
-mysql -u admin_user -pAdmin@123456 band_management -e "
-DELETE FROM Band WHERE name = '测试乐队_admin';
-SELECT '✓ 管理员可以删除数据' AS result;"
-
--- 测试 1.5: 管理员可以创建和删除表
-SELECT '--- 测试 1.5: 管理员 DDL 权限 ---' AS '';
-mysql -u admin_user -pAdmin@123456 band_management -e "
-CREATE TABLE test_admin_table (id INT PRIMARY KEY, name VARCHAR(50));
-SELECT '✓ 管理员可以创建表' AS result;
-DROP TABLE test_admin_table;
-SELECT '✓ 管理员可以删除表' AS result;"
-
-SELECT '✓ 管理员用户权限测试完成' AS '';
-
--- ============================================
--- 第二部分：乐队用户 (band_user) 权限测试
--- ============================================
-
-SELECT '' AS '';
-SELECT '========================================' AS '';
-SELECT '测试 2: 乐队用户 (band_user) 权限' AS '';
-SELECT '========================================' AS '';
-
--- 测试 2.1: 乐队用户可以查询和修改乐队相关表
-SELECT '--- 测试 2.1: 乐队用户对乐队表的完整权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
--- 查询
-SELECT '✓ 乐队用户可以查询 Band 表' AS result, COUNT(*) AS count FROM Band;
-
--- 插入
-INSERT INTO Band (name, founded_at, intro, member_count) 
-VALUES ('测试乐队_band', '2024-01-01', '乐队用户测试', 0);
-SELECT '✓ 乐队用户可以插入 Band 数据' AS result;
-
--- 更新
-UPDATE Band SET intro = '乐队用户测试更新' WHERE name = '测试乐队_band';
-SELECT '✓ 乐队用户可以更新 Band 数据' AS result;
-
--- 删除
-DELETE FROM Band WHERE name = '测试乐队_band';
-SELECT '✓ 乐队用户可以删除 Band 数据' AS result;"
-
--- 测试 2.2: 乐队用户可以管理成员
-SELECT '--- 测试 2.2: 乐队用户对成员表的完整权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 Member 表' AS result, COUNT(*) AS count FROM Member;
-SELECT '✓ 乐队用户可以插入/更新/删除 Member 数据' AS result;"
-
--- 测试 2.3: 乐队用户可以管理专辑和歌曲
-SELECT '--- 测试 2.3: 乐队用户对专辑和歌曲表的完整权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 Album 表' AS result, COUNT(*) AS count FROM Album;
-SELECT '✓ 乐队用户可以查询 Song 表' AS result, COUNT(*) AS count FROM Song;
-SELECT '✓ 乐队用户可以管理专辑和歌曲' AS result;"
-
--- 测试 2.4: 乐队用户可以管理演唱会
-SELECT '--- 测试 2.4: 乐队用户对演唱会表的完整权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 Concert 表' AS result, COUNT(*) AS count FROM Concert;
-SELECT '✓ 乐队用户可以管理演唱会' AS result;"
-
--- 测试 2.5: 乐队用户只能查看歌迷数据（不能修改）
-SELECT '--- 测试 2.5: 乐队用户对歌迷表只有查询权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
--- 查询应该成功
-SELECT '✓ 乐队用户可以查询 Fan 表' AS result, COUNT(*) AS count FROM Fan;"
-
--- 插入应该失败
-mysql -u band_user -pBand@123456 band_management -e "
-INSERT INTO Fan (name, gender, age, occupation, education) 
-VALUES ('测试歌迷', 'M', 25, '测试', '本科');
-" 2>&1 | grep -q "INSERT command denied" && echo "✓ 乐队用户不能插入 Fan 数据（符合预期）" || echo "✗ 权限设置有误"
-
--- 测试 2.6: 乐队用户只能查看乐评（不能修改）
-SELECT '--- 测试 2.6: 乐队用户对乐评表只有查询权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
--- 查询应该成功
-SELECT '✓ 乐队用户可以查询 AlbumReview 表' AS result, COUNT(*) AS count FROM AlbumReview;
-"
-
--- 删除应该失败
-mysql -u band_user -pBand@123456 band_management -e "
-DELETE FROM AlbumReview WHERE review_id = 1;
-" 2>&1 | grep -q "DELETE command denied" && echo "✓ 乐队用户不能删除 AlbumReview 数据（符合预期）" || echo "✗ 权限设置有误"
-
--- 测试 2.7: 乐队用户可以查看歌迷喜好（只读）
-SELECT '--- 测试 2.7: 乐队用户对歌迷喜好表只有查询权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 FanFavoriteBand 表' AS result, COUNT(*) AS count FROM FanFavoriteBand;
-SELECT '✓ 乐队用户可以查询 FanFavoriteAlbum 表' AS result, COUNT(*) AS count FROM FanFavoriteAlbum;
-SELECT '✓ 乐队用户可以查询 FanFavoriteSong 表' AS result, COUNT(*) AS count FROM FanFavoriteSong;"
-
--- 测试 2.8: 乐队用户可以查看演唱会参加记录（只读）
-SELECT '--- 测试 2.8: 乐队用户对演唱会参加记录只有查询权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 ConcertAttendance 表' AS result, COUNT(*) AS count FROM ConcertAttendance;"
-
--- 测试 2.9: 乐队用户可以访问统计视图
-SELECT '--- 测试 2.9: 乐队用户可以访问统计视图 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 v_band1_fans 视图' AS result, COUNT(*) AS count FROM v_band1_fans;
-SELECT '✓ 乐队用户可以查询 v_band1_reviews 视图' AS result, COUNT(*) AS count FROM v_band1_reviews;
-SELECT '✓ 乐队用户可以查询 v_band1_fan_count 视图' AS result FROM v_band1_fan_count;
-SELECT '✓ 乐队用户可以查询 v_band1_fan_age_stats 视图' AS result FROM v_band1_fan_age_stats LIMIT 1;"
-
--- 测试 2.10: 乐队用户不能创建表
-SELECT '--- 测试 2.10: 乐队用户没有 DDL 权限 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-CREATE TABLE test_band_table (id INT);
-" 2>&1 | grep -q "CREATE command denied" && echo "✓ 乐队用户不能创建表（符合预期）" || echo "✗ 权限设置有误"
-
-SELECT '✓ 乐队用户权限测试完成' AS '';
-
--- ============================================
--- 第三部分：歌迷用户 (fan_user) 权限测试
--- ============================================
-
-SELECT '' AS '';
-SELECT '========================================' AS '';
-SELECT '测试 3: 歌迷用户 (fan_user) 权限' AS '';
-SELECT '========================================' AS '';
-
--- 测试 3.1: 歌迷用户可以查询和修改歌迷信息
-SELECT '--- 测试 3.1: 歌迷用户对歌迷表的完整权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
--- 查询
-SELECT '✓ 歌迷用户可以查询 Fan 表' AS result, COUNT(*) AS count FROM Fan;
-
--- 插入
-INSERT INTO Fan (name, gender, age, occupation, education) 
-VALUES ('测试歌迷_fan', 'M', 25, '测试职业', '本科');
-SELECT '✓ 歌迷用户可以插入 Fan 数据' AS result;
-
--- 更新
-UPDATE Fan SET occupation = '测试职业更新' WHERE name = '测试歌迷_fan';
-SELECT '✓ 歌迷用户可以更新 Fan 数据' AS result;
-
--- 删除
-DELETE FROM Fan WHERE name = '测试歌迷_fan';
-SELECT '✓ 歌迷用户可以删除 Fan 数据' AS result;"
-
--- 测试 3.2: 歌迷用户可以管理喜好信息
-SELECT '--- 测试 3.2: 歌迷用户对喜好表的完整权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 FanFavoriteBand 表' AS result, COUNT(*) AS count FROM FanFavoriteBand;
-SELECT '✓ 歌迷用户可以查询 FanFavoriteAlbum 表' AS result, COUNT(*) AS count FROM FanFavoriteAlbum;
-SELECT '✓ 歌迷用户可以查询 FanFavoriteSong 表' AS result, COUNT(*) AS count FROM FanFavoriteSong;
-SELECT '✓ 歌迷用户可以管理喜好数据' AS result;"
-
--- 测试 3.3: 歌迷用户可以管理演唱会参加记录
-SELECT '--- 测试 3.3: 歌迷用户对演唱会参加记录的完整权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 ConcertAttendance 表' AS result, COUNT(*) AS count FROM ConcertAttendance;
-SELECT '✓ 歌迷用户可以管理演唱会参加记录' AS result;"
-
--- 测试 3.4: 歌迷用户可以管理乐评
-SELECT '--- 测试 3.4: 歌迷用户对乐评表的完整权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 AlbumReview 表' AS result, COUNT(*) AS count FROM AlbumReview;
-SELECT '✓ 歌迷用户可以管理乐评数据' AS result;"
-
--- 测试 3.5: 歌迷用户只能查看乐队信息（不能修改）
-SELECT '--- 测试 3.5: 歌迷用户对乐队表只有查询权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
--- 查询应该成功
-SELECT '✓ 歌迷用户可以查询 Band 表' AS result, COUNT(*) AS count FROM Band;
-"
-
--- 更新应该失败
-mysql -u fan_user -pFan@123456 band_management -e "
-UPDATE Band SET intro = '测试' WHERE band_id = 1;
-" 2>&1 | grep -q "UPDATE command denied" && echo "✓ 歌迷用户不能更新 Band 数据（符合预期）" || echo "✗ 权限设置有误"
-
--- 测试 3.6: 歌迷用户只能查看成员信息（不能修改）
-SELECT '--- 测试 3.6: 歌迷用户对成员表只有查询权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 Member 表' AS result, COUNT(*) AS count FROM Member;"
-
--- 测试 3.7: 歌迷用户只能查看专辑和歌曲（不能修改）
-SELECT '--- 测试 3.7: 歌迷用户对专辑和歌曲表只有查询权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 Album 表' AS result, COUNT(*) AS count FROM Album;
-SELECT '✓ 歌迷用户可以查询 Song 表' AS result, COUNT(*) AS count FROM Song;"
-
--- 测试 3.8: 歌迷用户只能查看演唱会（不能修改）
-SELECT '--- 测试 3.8: 歌迷用户对演唱会表只有查询权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 Concert 表' AS result, COUNT(*) AS count FROM Concert;"
-
--- 测试 3.9: 歌迷用户可以查看专辑排行榜
-SELECT '--- 测试 3.9: 歌迷用户可以查询专辑排行榜 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 AlbumRanking 表' AS result, COUNT(*) AS count FROM AlbumRanking;"
-
--- 测试 3.10: 歌迷用户不能创建表
-SELECT '--- 测试 3.10: 歌迷用户没有 DDL 权限 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-CREATE TABLE test_fan_table (id INT);
-" 2>&1 | grep -q "CREATE command denied" && echo "✓ 歌迷用户不能创建表（符合预期）" || echo "✗ 权限设置有误"
-
-SELECT '✓ 歌迷用户权限测试完成' AS '';
-
--- ============================================
--- 第四部分：权限隔离测试
--- ============================================
-
-SELECT '' AS '';
-SELECT '========================================' AS '';
-SELECT '测试 4: 权限隔离验证' AS '';
-SELECT '========================================' AS '';
-
--- 测试 4.1: 乐队用户不能修改歌迷数据
-SELECT '--- 测试 4.1: 乐队用户不能修改歌迷数据 ---' AS '';
-SELECT '预期结果: INSERT/UPDATE/DELETE 操作应该被拒绝' AS '';
-
--- 测试 4.2: 歌迷用户不能修改乐队数据
-SELECT '--- 测试 4.2: 歌迷用户不能修改乐队数据 ---' AS '';
-SELECT '预期结果: INSERT/UPDATE/DELETE 操作应该被拒绝' AS '';
-
--- 测试 4.3: 乐队用户不能修改乐评
-SELECT '--- 测试 4.3: 乐队用户不能修改乐评 ---' AS '';
-SELECT '预期结果: UPDATE/DELETE 操作应该被拒绝' AS '';
-
--- 测试 4.4: 歌迷用户不能修改演唱会
-SELECT '--- 测试 4.4: 歌迷用户不能修改演唱会 ---' AS '';
-SELECT '预期结果: INSERT/UPDATE/DELETE 操作应该被拒绝' AS '';
-
-SELECT '✓ 权限隔离测试完成' AS '';
-
--- ============================================
--- 第五部分：User 表访问权限测试
--- ============================================
-
-SELECT '' AS '';
-SELECT '========================================' AS '';
-SELECT '测试 5: User 表访问权限' AS '';
-SELECT '========================================' AS '';
-
--- 测试 5.1: 乐队用户可以查询 User 表（用于登录验证）
-SELECT '--- 测试 5.1: 乐队用户可以查询 User 表 ---' AS '';
-mysql -u band_user -pBand@123456 band_management -e "
-SELECT '✓ 乐队用户可以查询 User 表' AS result, COUNT(*) AS count FROM User;"
-
--- 测试 5.2: 歌迷用户可以查询 User 表（用于登录验证）
-SELECT '--- 测试 5.2: 歌迷用户可以查询 User 表 ---' AS '';
-mysql -u fan_user -pFan@123456 band_management -e "
-SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM User;"
-```
-
 #### 数据库创建结果
 
-<img src="img/band_management.png" alt="band_management" style="zoom:60%;" />
+<img src="img/E-R.png" alt="E-R" style="zoom:50%;" />
 
 ## 基于数据库的web应用
 
@@ -1394,190 +353,312 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
   * 该乐迷可以给任何专辑评论、评分。 
 * 可自行添加相应功能
 
-### 异常处理与数据完整性
-
-#### 1. 异常处理机制
-
-系统实现了完善的异常处理机制，确保用户能够获得清晰、具体的错误提示信息。
-
-##### 1.1 SQL异常处理
-
-系统对SQL异常进行了分层处理：
-
-**SQLException处理**：
-- 捕获直接的JDBC异常
-- 提取MySQL触发器错误信息（SQLState = 45000）
-- 返回具体的错误消息
-
-**UncategorizedSQLException处理**：
-- 捕获Spring JDBC包装的SQL异常
-- 优先获取原始SQLException进行处理
-- 从异常消息中提取实际错误信息
-- 确保乐队管理和管理员后台的错误提示一致
-
-**错误信息提取逻辑**：
-- 从触发器消息中提取MESSAGE_TEXT
-- 从多行异常消息中提取最后的实际错误
-- 返回PARAM_ERROR而非SYSTEM_ERROR
-
-##### 1.2 日期验证错误提示优化
-
-系统对日期验证错误提示进行了优化，提供详细的日期信息：
-
-**错误提示格式**：
-```
-"xxx日期（具体日期）需要在乐队创建日期（具体日期）之后"
-```
-
-**涉及的Service实现类**：
-- BandMemberServiceImpl
-- BandAlbumServiceImpl
-- BandConcertServiceImpl
-- AdminMemberServiceImpl
-- AdminAlbumServiceImpl
-- AdminConcertServiceImpl
-
-**示例**：
-```
-"成员加入日期（2020-01-01）需要在乐队创建日期（2021-01-01）之后"
-"专辑发行日期（2019-05-10）需要在乐队创建日期（2020-03-15）之后"
-```
-
-#### 2. 数据完整性双重验证机制
-
-系统采用应用层和数据库层的双重验证机制，确保数据完整性：
-
-##### 2.1 应用层验证（Service层）
-
-**特点**：
-- 在数据库操作前执行
-- 提供详细的错误信息（包含具体日期）
-- 抛出BusinessException
-- 用户体验更好
-
-**验证内容**：
-- 成员加入日期必须 >= 乐队成立日期
-- 专辑发行日期必须 >= 乐队成立日期
-- 演唱会日期必须 >= 乐队成立日期
-
-##### 2.2 数据库层验证（触发器）
-
-**特点**：
-- BEFORE INSERT/UPDATE触发
-- 提供简单的错误信息
-- 抛出SQLException（被Spring包装为UncategorizedSQLException）
-- 确保数据完整性，防止绕过应用层的直接数据库操作
-
-**触发器列表**：
-- `trg_member_check_join_date_insert`
-- `trg_member_check_join_date_update`
-- `trg_album_check_release_date_insert`
-- `trg_album_check_release_date_update`
-- `trg_concert_check_event_time_insert`
-- `trg_concert_check_event_time_update`
-
-##### 2.3 为什么需要两层验证？
-
-**应用层验证的优势**：
-- 提供更好的用户体验
-- 详细的错误信息
-- 更快的响应速度（无需访问数据库）
-
-**数据库层验证的优势**：
-- 确保数据完整性
-- 防止绕过应用层的直接数据库操作
-- 作为最后一道防线
-
-#### 3. 全局异常处理器
-
-系统实现了全局异常处理器（GlobalExceptionHandler），统一处理所有异常：
-
-**处理的异常类型**：
-- BusinessException：应用层业务异常
-- SQLException：数据库直接异常
-- UncategorizedSQLException：Spring JDBC包装异常
-- IllegalArgumentException：参数异常
-- Exception：其他未知异常
-
-**异常处理流程**：
-1. 捕获异常
-2. 提取错误信息
-3. 记录日志
-4. 返回统一格式的错误响应
-
-**相关文档**：
-- [UncategorizedSQLException异常处理修复](./bug/UNCATEGORIZED_SQL_EXCEPTION_FIX.md)
-- [日期完整性约束修复](./bug/DATE_INTEGRITY_CONSTRAINT_FIX.md)
-
 ### 应用系统设计
 
 #### 1. 技术栈
-- **后端语言**: Java
-- **数据库**: MySQL 5.7+
-- **推荐框架**: Spring Boot + MyBatis
-- **前端**: Vue.js + Element Plus UI
-- **构建工具**: Maven
 
-#### 2. 功能设计
+##### 1.1 后端技术栈
 
-##### 2.1 用户认证与授权
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Spring Boot | 2.7.18 | 应用框架，提供自动配置和依赖管理 |
+| MyBatis | 2.3.1 | ORM 框架，数据持久化 |
+| MySQL | 8.0+ | 关系型数据库 |
+| Druid | 1.2.20 | 数据库连接池，提供监控和扩展功能 |
+| PageHelper | 1.4.7 | MyBatis 分页插件 |
+| Pinyin4j | 2.5.1 | 中文转拼音工具库 |
+| Maven | 3.6+ | 项目构建和依赖管理 |
 
-###### 2.1.1 用户登录
+##### 1.2 前端技术栈
 
-**功能描述**: 用户可以选择角色类型登录系统
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| Vue.js | 3.x | 前端框架 |
+| Vue Router | 4.x | 路由管理 |
+| Pinia | 2.x | 状态管理 |
+| Element Plus | 2.x | UI 组件库 |
+| Axios | 1.x | HTTP 请求库 |
+| Vite | 4.x | 前端构建工具 |
 
-**用户角色**:
-- 管理员用户（ADMIN）
-- 乐队用户（BAND）
-- 歌迷用户（FAN）
+##### 1.3 数据库特性
+
+| 特性 | 说明 |
+|------|------|
+| 触发器 | 自动维护数据一致性（成员人数、专辑评分、排行榜） |
+| 存储过程 | 复杂业务逻辑封装（排行榜更新） |
+| 外键约束 | 引用完整性保证 |
+| CHECK 约束 | 数据范围验证（评分、日期逻辑） |
+| UNIQUE 约束 | 唯一性保证（防止重复评论） |
+| 视图 | 数据查询简化（歌迷统计、乐队数据） |
+
+#### 2. 核心架构设计
+
+##### 2.1 多数据源动态切换架构
+
+**设计目标**: 实现基于角色的数据库权限隔离，不同角色使用不同的数据库用户连接
+
+**核心组件**:
+
+1. **DataSourceContextHolder** - 数据源上下文持有者
+   - 使用 ThreadLocal 存储当前线程的数据源类型
+   - 提供 setDataSourceType()、getDataSourceType()、clearDataSourceType() 方法
+   - 确保线程安全，防止数据源混乱
+
+2. **DynamicDataSource** - 动态数据源
+   - 继承 Spring 的 AbstractRoutingDataSource
+   - 重写 determineCurrentLookupKey() 方法
+   - 根据 ThreadLocal 中的值动态返回数据源 key
+
+3. **DataSourceConfig** - 数据源配置类
+   - 创建三个独立的 Druid 数据源（admin、band、fan）
+   - 配置动态数据源，注册所有数据源到 targetDataSources
+   - 设置默认数据源为 admin
+
+**工作流程**:
+```
+用户请求 → Service层设置数据源类型 → ThreadLocal存储 
+→ MyBatis执行SQL → DynamicDataSource获取数据源key 
+→ 使用对应数据源执行 → 请求结束清理ThreadLocal
+```
+
+**权限隔离表**:
+
+| 数据源 | 数据库用户 | 密码 | 权限范围 |
+|--------|-----------|------|---------|
+| admin | admin_user | Admin@123456 | 所有表的增删改查权限 |
+| band | band_user | Band@123456 | 管理本乐队数据，查看歌迷数据 |
+| fan | fan_user | Fan@123456 | 管理个人数据，查看乐队数据 |
+
+##### 2.2 认证与授权机制
+
+###### 2.2.1 Session + Cookie 认证
+
+**实现方式**:
+- 用户登录成功后，服务器创建 HttpSession 并返回 JSESSIONID Cookie
+- 后续请求携带 Cookie，服务器从 Session 中获取用户信息
+- Session 默认超时时间 30 分钟
+- 前端使用 Axios 配置 withCredentials: true 携带 Cookie
 
 **登录流程**:
-1. 用户选择角色类型（下拉选择）
-2. 输入用户名和密码
-3. 系统验证身份（BCrypt密码验证）
-4. 登录成功后创建Session，返回用户信息
-5. 跳转到对应角色的主页
+1. 前端提交用户名、密码、角色（ADMIN/BAND/FAN）
+2. AuthService 根据角色切换数据源（DataSourceContextHolder.setDataSourceType）
+3. 查询 User 表验证用户名和密码（支持加密和明文）
+4. 验证通过后将用户信息（userId、username、role、entityId）存入 Session
+5. 返回用户基本信息给前端
+6. 前端根据角色跳转到对应主页
 
-**数据库用户映射**:
-- 管理员 → `admin_user@localhost`（密码：Admin@123456）
-- 乐队用户 → `band_user@localhost`（密码：Band@123456）
-- 歌迷用户 → `fan_user@localhost`（密码：Fan@123456）
+**登出流程**:
+1. 前端调用登出接口
+2. 服务器清除 Session
+3. 前端清除本地存储的用户信息
+4. 跳转到登录页
 
-**安全要求**:
-- 密码BCrypt加密存储
-- Session + Cookie认证机制
-- 防止SQL注入（使用MyBatis参数化查询）
-- 统一异常处理
-- 跨域配置（CORS）
-
-###### 2.1.2 用户注册
-
-**功能描述**: 新用户可以注册乐队账号或歌迷账号
+###### 2.2.2 用户注册与自动生成用户名
 
 **乐队注册**:
-- 输入乐队名称、成立日期、乐队简介、密码
-- 系统自动生成用户名（band_拼音）
-- 创建Band记录和User记录
+- 输入：乐队名称、成立日期、乐队简介、密码
+- 使用 PinyinUtil（基于 pinyin4j）将乐队名称转为拼音
+- 生成用户名：`band_` + 拼音（如：band_taopaojihua）
+- 检查用户名是否已存在，存在则添加数字后缀
+- 切换到 ADMIN 数据源（只有 admin 有 INSERT 权限）
+- 创建 Band 记录和 User 记录（事务保证一致性）
 - 返回生成的用户名供登录使用
 
 **歌迷注册**:
-- 输入姓名、性别、年龄、职业、学历、密码
-- 系统自动生成用户名（fan_拼音）
-- 创建Fan记录和User记录
+- 输入：姓名、性别、年龄、职业、学历、密码
+- 使用 PinyinUtil 将姓名转为拼音
+- 生成用户名：`fan_` + 拼音（如：fan_zhangsan）
+- 检查用户名是否已存在，存在则添加数字后缀
+- 切换到 ADMIN 数据源
+- 创建 Fan 记录和 User 记录（事务保证一致性）
 - 返回生成的用户名供登录使用
 
-###### 2.1.3 权限控制
+**优势**:
+- 用户无需手动输入用户名，降低注册门槛
+- 用户名规范统一，便于管理
+- 自动处理重名情况
 
-- 基于角色的访问控制（RBAC）
-- 不同角色访问不同的功能模块
-- 数据库层面的权限隔离（已在database_security.sql中实现）
-- 应用层Session验证
-- 前端路由守卫
+###### 2.2.3 权限控制
 
+**数据库层权限隔离**:
+- 通过 MySQL 用户权限系统实现（database_security.sql）
+- admin_user：所有表的 SELECT、INSERT、UPDATE、DELETE 权限
+- band_user：部分表的 SELECT 权限，本乐队数据的 UPDATE、DELETE 权限
+- fan_user：部分表的 SELECT 权限，个人数据的 UPDATE、DELETE 权限
 
-##### 2.2 管理员功能模块
+**应用层权限控制**:
+- Session 验证：检查用户是否登录
+- 角色验证：检查用户角色是否有权访问该接口
+- 数据归属验证：检查用户是否有权操作该数据（如乐队只能管理自己的成员）
 
-###### 2.2.1 管理员主页（Dashboard）
+**前端路由守卫**:
+- 使用 Vue Router 的 beforeEach 钩子
+- 检查用户登录状态（从 Pinia store 获取）
+- 未登录自动跳转登录页
+- 根据角色动态加载路由
+
+##### 2.3 业务层设计
+
+###### 2.3.1 分页查询实现
+
+**使用 PageHelper 插件**:
+```java
+// 在查询前调用
+PageHelper.startPage(pageNum, pageSize);
+// 执行查询
+List<Entity> list = mapper.selectAll();
+// 封装分页结果
+PageInfo<Entity> pageInfo = new PageInfo<>(list);
+// 转换为统一响应格式
+return PageResult.of(pageInfo);
+```
+
+**优势**:
+- PageHelper 自动拦截 SQL，添加 LIMIT 和 OFFSET 子句
+- 无需手动编写分页 SQL
+- 自动计算总页数、总记录数
+
+###### 2.3.2 数据源切换策略
+
+**在 Service 层实现**:
+```java
+// 设置数据源
+DataSourceContextHolder.setDataSourceType("admin");
+// 执行数据库操作
+List<Song> list = songMapper.selectAll();
+// 请求结束时自动清理（通过拦截器或过滤器）
+```
+
+**切换时机**:
+- 登录/注册：根据用户角色切换
+- 查询操作：使用当前用户对应的数据源
+- 写操作：根据业务需求切换（如注册需要 admin 权限）
+
+###### 2.3.3 统一响应封装
+
+**Result<T> 类**:
+```java
+{
+  "code": 200,        // 状态码
+  "message": "成功",  // 提示信息
+  "data": {}          // 业务数据
+}
+```
+
+**PageResult<T> 类**:
+```java
+{
+  "total": 100,       // 总记录数
+  "list": [],         // 数据列表
+  "pageNum": 1,       // 当前页码
+  "pageSize": 10,     // 每页大小
+  "pages": 10         // 总页数
+}
+```
+
+##### 2.4 数据访问层设计
+
+###### 2.4.1 MyBatis 配置
+
+**Mapper 接口**:
+- 使用 @Mapper 注解标识
+- 定义数据访问方法（insert、update、delete、select）
+- 通过 @Param 注解指定参数名
+
+**XML 映射文件**:
+- 定义 SQL 语句和结果映射
+- 使用动态 SQL（if、where、set 标签）
+- 支持多条件组合查询
+- 使用 useGeneratedKeys 自动获取主键
+
+###### 2.4.2 核心 SQL 特性
+
+**动态 SQL**:
+- 根据参数动态拼接 WHERE 条件
+- 只更新非空字段（动态 UPDATE）
+- 支持模糊查询（LIKE CONCAT）
+
+**关联查询**:
+- LEFT JOIN 获取关联表数据
+- 在 resultMap 中映射关联字段
+- 一次查询获取完整信息
+
+##### 2.5 异常处理机制
+
+###### 2.5.1 全局异常处理器
+
+**GlobalExceptionHandler**:
+- 使用 @ControllerAdvice 注解
+- 捕获所有 Controller 抛出的异常
+- 统一返回 Result 格式的错误响应
+
+**异常类型处理**:
+- BusinessException：业务异常（自定义）
+- SQLException：数据库异常（提取触发器错误信息）
+- ConstraintViolationException：约束违反异常
+- 其他运行时异常
+
+###### 2.5.2 错误信息提取
+
+**数据库错误处理**:
+- 从 SQLException 中提取触发器错误信息
+- 解析 MySQL 错误消息（SIGNAL SQLSTATE '45000'）
+- 转换为友好的中文提示
+
+**应用层验证**:
+- 参数校验（非空、格式、范围）
+- 业务规则验证（日期逻辑、权限检查）
+- 提供详细的错误信息（包含具体日期等）
+
+##### 2.6 前端架构设计
+
+###### 2.6.1 API 请求封装
+
+**Axios 配置**:
+- baseURL: `http://localhost:8080/api`
+- withCredentials: true（携带 Cookie）
+- timeout: 10000ms
+
+**请求拦截器**:
+- 可添加 token 等认证信息
+- 统一处理请求参数
+
+**响应拦截器**:
+- 统一处理业务错误（code != 200）
+- 统一处理 HTTP 错误（401、403、500）
+- 自动显示错误提示（Element Plus Message）
+- 401 自动跳转登录页
+
+###### 2.6.2 路由配置
+
+**Vue Router 配置**:
+- 根据用户角色动态加载路由
+- 路由守卫验证登录状态
+- 未登录自动跳转登录页
+- 角色不匹配跳转到对应主页
+
+**路由结构**:
+- `/login` - 登录页
+- `/register/band` - 乐队注册页
+- `/register/fan` - 歌迷注册页
+- `/admin/*` - 管理员页面
+- `/band/*` - 乐队用户页面
+- `/fan/*` - 歌迷用户页面
+
+###### 2.6.3 状态管理
+
+**使用 Pinia**:
+- 存储用户信息（userId、username、role、entityId）
+- 提供登录、登出方法
+- 持久化用户状态（localStorage）
+- 提供 getter 方法获取用户信息
+
+#### 3. 功能设计
+#### 3. 功能设计
+
+##### 3.1 管理员功能模块
+
+###### 3.1.1 管理员主页（Dashboard）
 
 **功能描述**: 显示系统整体统计数据
 
@@ -1586,7 +667,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 数据可视化图表
 - 快速访问各管理模块
 
-###### 2.2.2 乐队管理（Bands）
+###### 3.1.2 乐队管理（Bands）
 
 **功能描述**: 管理所有乐队信息
 
@@ -1598,12 +679,13 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 编辑乐队信息
 - 删除乐队（级联删除相关数据）
 - 设置乐队队长
+- **解散乐队**（设置解散状态和解散日期，自动更新成员离队日期）
 
 **数据展示**:
-- 乐队ID、名称、成立日期、简介、队长、成员人数
+- 乐队ID、名称、成立日期、简介、队长、成员人数、解散状态
 - 支持排序和筛选
 
-###### 2.2.3 成员管理（Members）
+###### 3.1.3 成员管理（Members）
 **功能描述**: 管理所有乐队成员信息
 
 **核心功能**:
@@ -1613,13 +695,14 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 添加新成员（personId、乐队、姓名、性别、出生日期、分工、加入日期）
 - 编辑成员信息（可设置离队日期）
 - 删除成员记录
+- **Admin Privilege Mode**：可为已解散乐队添加成员（历史数据修正）
 
 **数据展示**:
 - 成员ID、姓名、性别、出生日期、所属乐队、分工、加入日期、离队日期
 - 自动计算年龄
 - 标识在队/离队状态
 
-###### 2.2.4 专辑管理（Albums）
+###### 3.1.4 专辑管理（Albums）
 **功能描述**: 管理所有专辑信息
 
 **核心功能**:
@@ -1635,7 +718,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 专辑ID、名称、所属乐队、发行日期、文案、平均评分
 - 评分自动计算（触发器）
 
-###### 2.2.5 歌曲管理（Songs）
+###### 3.1.5 歌曲管理（Songs）
 **功能描述**: 管理所有歌曲信息
 
 **核心功能**:
@@ -1650,7 +733,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 **数据展示**:
 - 歌曲ID、名称、所属专辑、所属乐队、词作者、曲作者
 
-###### 2.2.6 演唱会管理（Concerts）
+###### 3.1.6 演唱会管理（Concerts）
 **功能描述**: 管理所有演唱会信息
 
 **核心功能**:
@@ -1664,7 +747,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 **数据展示**:
 - 演唱会ID、名称、主办乐队、时间、地点、参与人数
 
-###### 2.2.7 歌迷管理（Fans）
+###### 3.1.7 歌迷管理（Fans）
 **功能描述**: 管理所有歌迷信息
 
 **核心功能**:
@@ -1679,7 +762,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 歌迷ID、姓名、性别、年龄、职业、学历
 - 关注乐队数、收藏专辑数、收藏歌曲数、乐评数
 
-###### 2.2.8 乐评管理（Reviews）
+###### 3.1.8 乐评管理（Reviews）
 **功能描述**: 管理所有乐评信息
 
 **核心功能**:
@@ -1694,9 +777,9 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 支持按评分、时间排序
 
 
-##### 2.3 乐队用户功能模块
+##### 3.2 乐队用户功能模块
 
-###### 2.3.1 乐队主页（Home）
+###### 3.2.1 乐队主页（Home）
 **功能描述**: 显示本乐队的概览信息和快速操作
 
 **核心功能**:
@@ -1706,7 +789,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 最新演唱会列表
 - 快速访问各管理模块
 
-###### 2.3.2 成员管理（Members）
+###### 3.2.2 成员管理（Members）
 **功能描述**: 管理本乐队的成员信息
 
 **核心功能**:
@@ -1716,13 +799,14 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 删除成员记录
 - 查看成员详细信息
 - **约束**: 成员人数自动更新（触发器）
+- **约束**: 已解散乐队不能添加新成员（应用层验证）
 
 **数据展示**:
 - 成员姓名、性别、年龄、分工、加入日期、在队状态
 - 标识队长
 - 按加入时间排序
 
-###### 2.3.3 专辑管理（Albums）
+###### 3.2.3 专辑管理（Albums）
 **功能描述**: 管理本乐队的专辑信息
 
 **核心功能**:
@@ -1739,7 +823,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 评分自动计算（触发器）
 - 按发行日期排序
 
-###### 2.3.4 歌曲管理（Songs）
+###### 3.2.4 歌曲管理（Songs）
 **功能描述**: 管理本乐队的歌曲信息
 
 **核心功能**:
@@ -1753,7 +837,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 歌曲名称、所属专辑、词作者、曲作者
 - 按专辑和添加时间排序
 
-###### 2.3.5 演唱会管理（Concerts）
+###### 3.2.5 演唱会管理（Concerts）
 **功能描述**: 管理本乐队的演唱会信息
 
 **核心功能**:
@@ -1768,7 +852,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 演唱会名称、时间、地点、参与人数
 - 按时间排序（最新的在前）
 
-###### 2.3.6 歌迷数据查看（Fans）
+###### 3.2.6 歌迷数据查看（Fans）
 **功能描述**: 查看与本乐队相关的歌迷信息（只读）
 
 **核心功能**:
@@ -1796,26 +880,44 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 使用数据库视图：`v_band_fans`, `v_band_fan_age_stats`, `v_band_fan_gender_stats` 等
 - 通过 `band_id` 过滤数据
 
+###### 3.2.7 乐队解散功能
 
-##### 2.4 歌迷用户功能模块
+**功能描述**: 乐队用户可以解散自己的乐队
 
-###### 2.4.1 歌迷主页（Home）
+**核心功能**:
+- 设置乐队为已解散状态
+- 设置解散日期
+- 自动将所有未离队成员的离队日期设置为解散日期
+- 解散后不能添加新成员（应用层约束）
+- 可以修改解散日期（智能同步成员离队日期）
+
+**业务规则**:
+- 解散日期不能早于成立日期
+- 解散日期不能早于任何成员的加入日期
+- 修改解散日期时，只更新离队日期等于旧解散日期的成员
+
+
+##### 3.3 歌迷用户功能模块
+
+###### 3.3.1 歌迷主页（Home）
 **功能描述**: 显示歌迷的个人概览和推荐内容
 
 **核心功能**:
 - 显示个人统计数据（关注乐队数、收藏专辑数、收藏歌曲数、乐评数）
-- 推荐乐队列表
-- 专辑排行榜（Top 10）
-- 最新演唱会信息
+- 推荐乐队列表（关注人数前5）
+- 专辑排行榜（Top 10，动态更新）
+- 最新演唱会信息（最多5场）
 - 快速访问各功能模块
+- 可直接对推荐内容进行关注/收藏操作
 
-###### 2.4.2 个人信息管理（Profile）
+###### 3.3.2 个人信息管理（Profile）
 **功能描述**: 管理歌迷的个人信息
 
 **核心功能**:
 - 查看个人信息（姓名、性别、年龄、职业、学历）
 - 编辑个人信息
 - 修改密码（需验证旧密码）
+- 删除账号
 - 查看账号统计数据
 
 **数据展示**:
@@ -1823,7 +925,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 喜好统计（关注、收藏、参与数量）
 - 账号创建时间
 
-###### 2.4.3 我的喜好管理（Favorites）
+###### 3.3.3 我的喜好管理（Favorites）
 **功能描述**: 管理喜欢的乐队、专辑、歌曲和演唱会
 
 **核心功能**:
@@ -1857,7 +959,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 支持搜索和筛选
 - 批量操作（可选）
 
-###### 2.4.4 发现与浏览（Discovery）
+###### 3.3.4 发现与浏览（Discovery）
 **功能描述**: 浏览和搜索所有内容，添加喜好
 
 **核心功能**:
@@ -1867,6 +969,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
    - 搜索乐队（按名称）
    - 查看乐队详细信息
    - 一键关注乐队
+   - 标识已关注状态
 
 2. **发现专辑（Tab 2）**
    - 显示所有专辑列表
@@ -1899,8 +1002,9 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 实时搜索
 - 标识已关注/收藏状态
 - 快速操作按钮
+- 操作完成后该条从列表移除
 
-###### 2.4.5 乐评管理（Reviews）
+###### 3.3.5 乐评管理（Reviews）
 **功能描述**: 管理我的乐评和浏览他人乐评
 
 **核心功能**:
@@ -1915,7 +1019,7 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 2. **发表乐评（Tab 2）**
    - 选择专辑（下拉选择或搜索）
    - 输入评分（1-10，步长0.5，滑块或输入）
-   - 输入评论内容（文本框）
+   - 输入评论内容（文本框，最少10字）
    - 提交乐评
    - **约束**: 每个专辑只能评论一次
 
@@ -1933,80 +1037,154 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 - 专辑平均分、评论总数
 
 
-##### 2.5 扩展功能（可选）
+##### 3.4 扩展功能（可选）
 
-###### 2.5.1 高级搜索
+###### 3.4.1 高级搜索
 - 多条件组合搜索
 - 模糊搜索
 - 搜索历史记录
 
-###### 2.5.2 数据可视化
+###### 3.4.2 数据可视化
 - 歌迷年龄分布图表
 - 专辑评分趋势图
 - 演唱会参与统计图
 - 乐队成员变化时间线
 
-###### 2.5.3 通知功能
+###### 3.4.3 通知功能
 - 乐队发布新专辑通知关注的歌迷
 - 演唱会提醒
 - 乐评回复通知
 
-###### 2.5.4 社交功能
+###### 3.4.4 社交功能
 - 歌迷之间互相关注
 - 评论点赞
 - 分享功能
 
-###### 2.5.5 导出功能
+###### 3.4.5 导出功能
 - 导出乐队信息报表
 - 导出歌迷统计数据
 - 导出乐评数据
 
-###### 2.5.6 批量操作
+###### 3.4.6 批量操作
 - 批量添加歌曲
 - 批量导入成员
 - 批量删除
 
 
-#### 3. 数据库集成
+#### 4. 数据库集成
 
-##### 3.1 数据库连接
-- 使用连接池（HikariCP/Druid）
-- 配置多数据源（可选）
-- 事务管理
+##### 4.1 多数据源配置
 
-##### 3.2 数据库用户使用
+**连接池配置**:
+- 使用 Druid 连接池
+- 初始连接数：5
+- 最小空闲连接数：5
+- 最大活动连接数：20
+- 最大等待时间：60000ms
+
+**数据源配置**:
+```yaml
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      admin:
+        url: jdbc:mysql://localhost:3306/band_management
+        username: admin_user
+        password: Admin@123456
+      band:
+        url: jdbc:mysql://localhost:3306/band_management
+        username: band_user
+        password: Band@123456
+      fan:
+        url: jdbc:mysql://localhost:3306/band_management
+        username: fan_user
+        password: Fan@123456
+```
+
+##### 4.2 数据库用户权限
+
 根据登录角色连接不同的数据库用户：
 
 | 应用角色 | 数据库用户 | 密码 | 权限 |
 |---------|-----------|------|------|
-| 管理员 | admin_user | Admin@123456 | 所有权限 |
-| 乐队用户 | band_user | Band@123456 | 管理乐队数据，查看歌迷数据 |
-| 歌迷用户 | fan_user | Fan@123456 | 管理个人数据，查看乐队数据 |
+| 管理员 | admin_user | Admin@123456 | 所有表的 SELECT、INSERT、UPDATE、DELETE 权限 |
+| 乐队用户 | band_user | Band@123456 | 部分表的 SELECT 权限，本乐队数据的 UPDATE、DELETE 权限 |
+| 歌迷用户 | fan_user | Fan@123456 | 部分表的 SELECT 权限，个人数据的 UPDATE、DELETE 权限 |
 
-##### 3.3 视图使用
+**权限隔离优势**:
+- 数据库层面的安全保障
+- 防止越权操作
+- 即使应用层被绕过，数据库层仍能保护数据
 
-实际应用层并没有使用视图，而是直接查询，这是可以改进的地方。
+##### 4.3 视图使用
 
+**已定义的视图**（可在应用层使用）:
+- `v_band_fans` - 乐队歌迷视图
+- `v_band_fan_age_stats` - 乐队歌迷年龄统计视图
+- `v_band_fan_gender_stats` - 乐队歌迷性别统计视图
+- 其他统计视图
 
-##### 3.4 触发器依赖
+**注意**: 当前实际应用层主要使用直接查询，视图使用较少，这是可以改进的地方。
+
+##### 4.4 触发器依赖
+
 应用需要依赖以下触发器的自动功能：
-- 成员人数自动更新
-- 专辑平均分自动计算
-- 排行榜自动更新
-- 成员时间重叠检查
 
-##### 3.5 数据完整性
-- 遵守外键约束
-- 遵守CHECK约束（评分范围、日期逻辑）
-- 遵守UNIQUE约束（防止重复评论）
+**成员人数自动维护**:
+- `trg_member_insert_update_count` - 成员插入时更新乐队人数
+- `trg_member_delete_update_count` - 成员删除时更新乐队人数
+- `trg_member_update_band` - 成员更新时更新乐队人数
 
-#### 4. 接口设计
+**专辑评分和排行榜自动更新**:
+- `trg_review_insert_update_album` - 乐评插入时更新专辑平均分和排行榜
+- `trg_review_update_album` - 乐评更新时更新专辑平均分和排行榜
+- `trg_review_delete_update_album` - 乐评删除时更新专辑平均分和排行榜
 
-##### 4.1 RESTful API设计原则
+**完整性约束触发器**:
+- `trg_band_check_leader` - 检查队长是否是本乐队成员
+- `trg_member_check_person_overlap_*` - 防止同一人同时在多个乐队
+- `trg_member_check_join_date_*` - 检查加入日期不早于成立日期
+- `trg_album_check_release_date_*` - 检查发行日期不早于成立日期
+- `trg_concert_check_event_time_*` - 检查演出日期不早于成立日期
+
+##### 4.5 数据完整性
+
+**外键约束**:
+- 所有关联表都使用外键约束
+- 级联删除策略（如删除乐队时级联删除成员）
+- 引用完整性保证
+
+**CHECK约束**:
+- 评分范围：1.0 - 10.0
+- 日期逻辑：加入日期 >= 成立日期
+- 性别枚举：男、女、其他
+
+**UNIQUE约束**:
+- 防止重复评论（fan_id + album_id 唯一）
+- 用户名唯一
+- 乐队名称唯一
+
+##### 4.6 事务管理
+
+**Spring事务管理**:
+- 使用 @Transactional 注解
+- 默认传播行为：REQUIRED
+- 默认隔离级别：READ_COMMITTED
+- 自动回滚运行时异常
+
+**关键事务场景**:
+- 用户注册（创建实体 + 创建用户）
+- 乐队解散（更新乐队状态 + 更新成员离队日期）
+- 删除操作（级联删除多个表）
+
+#### 5. 接口设计
+
+##### 5.1 RESTful API设计原则
 
 **基础URL**: `http://localhost:8080/api`
 
-**认证方式**: Session + Cookie
+**认证方式**: Session + Cookie（JSESSIONID）
 
 **响应格式**: 统一JSON格式
 ```json
@@ -2017,9 +1195,20 @@ SELECT '✓ 歌迷用户可以查询 User 表' AS result, COUNT(*) AS count FROM
 }
 ```
 
-##### 4.2 核心接口列表
+**分页响应格式**:
+```json
+{
+  "total": 100,
+  "list": [],
+  "pageNum": 1,
+  "pageSize": 10,
+  "pages": 10
+}
+```
 
-###### 4.2.1 认证接口
+##### 5.2 核心接口列表
+
+###### 5.2.1 认证接口
 ```
 POST   /api/auth/login              # 用户登录
 POST   /api/auth/logout             # 用户登出
@@ -2028,7 +1217,7 @@ POST   /api/auth/register/band      # 乐队用户注册
 POST   /api/auth/register/fan       # 歌迷用户注册
 ```
 
-###### 4.2.2 管理员接口
+###### 5.2.2 管理员接口
 
 **乐队管理**
 ```
@@ -2040,6 +1229,7 @@ POST   /api/admin/bands                    # 创建乐队
 PUT    /api/admin/bands/{id}               # 更新乐队信息
 DELETE /api/admin/bands/{id}               # 删除乐队
 PUT    /api/admin/bands/{bandId}/leader/{memberId}  # 设置队长
+PUT    /api/admin/bands/{id}/disband       # 解散乐队
 ```
 
 **成员管理**
@@ -2115,7 +1305,7 @@ GET    /api/admin/statistics/albums/rankings  # 获取完整专辑排行榜
 GET    /api/admin/statistics/bands/{bandId}   # 获取乐队统计数据
 ```
 
-###### 4.2.3 乐队用户接口
+###### 5.2.3 乐队用户接口
 
 **乐队信息**
 ```
@@ -2124,6 +1314,7 @@ PUT    /api/band/info                      # 更新乐队信息
 GET    /api/band/statistics                # 获取统计数据
 PUT    /api/band/password                  # 修改密码
 DELETE /api/band/delete                    # 删除乐队账号
+PUT    /api/band/disband                   # 解散乐队
 ```
 
 **成员管理**
@@ -2172,7 +1363,7 @@ GET    /api/band/fans/albums               # 获取喜欢专辑的歌迷统计
 GET    /api/band/fans/songs                # 获取喜欢歌曲的歌迷统计
 ```
 
-###### 4.2.4 歌迷用户接口
+###### 5.2.4 歌迷用户接口
 
 **个人信息**
 ```
@@ -2219,7 +1410,7 @@ PUT    /api/fan/reviews/{id}               # 修改乐评
 DELETE /api/fan/reviews/{id}               # 删除乐评
 ```
 
-###### 4.2.5 公共接口（无需登录）
+###### 5.2.5 公共接口（无需登录）
 
 **乐队信息**
 ```
@@ -2263,7 +1454,7 @@ GET    /api/reviews/album/{albumId}        # 按专辑获取乐评
 GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 ```
 
-##### 4.3 请求参数说明
+##### 5.3 请求参数说明
 
 **分页参数**（适用于所有列表接口）:
 - `pageNum`: 页码，默认1
@@ -2278,7 +1469,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - `albumId`: 按专辑筛选
 - `fanId`: 按歌迷筛选
 
-##### 4.4 响应状态码
+##### 5.4 响应状态码
 
 | 状态码 | 说明 |
 |--------|------|
@@ -2289,12 +1480,13 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 | 404 | 资源不存在 |
 | 500 | 服务器内部错误 |
 
-##### 4.5 业务错误码
+##### 5.5 业务错误码
 
 | 错误码 | 说明 |
 |--------|------|
 | 1001 | 用户名或密码错误 |
 | 2001 | 乐队不存在 |
+| 2002 | 乐队已解散，不能添加成员 |
 | 3001 | 成员不存在 |
 | 4001 | 专辑不存在 |
 | 5001 | 歌曲不存在 |
@@ -2303,13 +1495,14 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 | 8001 | 乐评不存在 |
 | 8002 | 已评论过该专辑 |
 | 9001 | 数据已存在 |
+| 9002 | 数据完整性约束违反 |
 
 
-#### 5. 页面设计
+#### 6. 页面设计
 
-##### 5.1 公共页面
+##### 6.1 公共页面
 
-###### 5.1.1 登录页面（Login.vue）
+###### 6.1.1 登录页面（Login.vue）
 **路由**: `/login`
 
 **功能**:
@@ -2325,7 +1518,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 表单验证提示
 - 登录成功后根据角色跳转到对应主页
 
-###### 5.1.2 乐队注册页面（RegisterBand.vue）
+###### 6.1.2 乐队注册页面（RegisterBand.vue）
 **路由**: `/register/band`
 
 **功能**:
@@ -2340,7 +1533,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 显示自动生成的用户名规则说明
 - 注册成功后显示生成的用户名
 
-###### 5.1.3 歌迷注册页面（RegisterFan.vue）
+###### 6.1.3 歌迷注册页面（RegisterFan.vue）
 **路由**: `/register/fan`
 
 **功能**:
@@ -2353,11 +1546,11 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 注册按钮
 - 返回登录链接
 
-##### 5.2 管理员页面
+##### 6.2 管理员页面
 
 **布局**: 左侧导航菜单 + 顶部标题栏 + 主内容区
 
-###### 5.2.1 管理员主页（Dashboard.vue）
+###### 6.2.1 管理员主页（Dashboard.vue）
 **路由**: `/admin/dashboard`
 
 **功能**:
@@ -2370,7 +1563,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 图表（ECharts，可选）
 - 快捷按钮
 
-###### 5.2.2 乐队管理页面（Bands.vue）
+###### 6.2.2 乐队管理页面（Bands.vue）
 **路由**: `/admin/bands`
 
 **功能**:
@@ -2387,7 +1580,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 查看详情对话框（展示成员列表）
 - 设置队长对话框（选择成员）
 
-###### 5.2.3 成员管理页面（Members.vue）
+###### 6.2.3 成员管理页面（Members.vue）
 **路由**: `/admin/members`
 
 **功能**:
@@ -2402,7 +1595,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **对话框**:
 - 添加/编辑成员对话框（表单，包含乐队选择）
 
-###### 5.2.4 专辑管理页面（Albums.vue）
+###### 6.2.4 专辑管理页面（Albums.vue）
 **路由**: `/admin/albums`
 
 **功能**:
@@ -2419,7 +1612,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 添加/编辑专辑对话框（表单，包含乐队选择）
 - 查看详情对话框（展示歌曲列表和评分统计）
 
-###### 5.2.5 歌曲管理页面（Songs.vue）
+###### 6.2.5 歌曲管理页面（Songs.vue）
 **路由**: `/admin/songs`
 
 **功能**:
@@ -2435,7 +1628,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **对话框**:
 - 添加/编辑歌曲对话框（表单，包含专辑选择）
 
-###### 5.2.6 演唱会管理页面（Concerts.vue）
+###### 6.2.6 演唱会管理页面（Concerts.vue）
 **路由**: `/admin/concerts`
 
 **功能**:
@@ -2450,7 +1643,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **对话框**:
 - 添加/编辑演唱会对话框（表单，包含乐队选择、日期时间选择器）
 
-###### 5.2.7 歌迷管理页面（Fans.vue）
+###### 6.2.7 歌迷管理页面（Fans.vue）
 **路由**: `/admin/fans`
 
 **功能**:
@@ -2466,7 +1659,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 添加/编辑歌迷对话框（表单）
 - 查看详情对话框（展示喜好统计）
 
-###### 5.2.8 乐评管理页面（Reviews.vue）
+###### 6.2.8 乐评管理页面（Reviews.vue）
 **路由**: `/admin/reviews`
 
 **功能**:
@@ -2481,11 +1674,11 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **排序**:
 - 支持按评分、时间排序
 
-##### 5.3 乐队用户页面
+##### 6.3 乐队用户页面
 
 **布局**: 左侧导航菜单 + 顶部标题栏 + 主内容区
 
-###### 5.3.1 乐队主页（Home.vue）
+###### 6.3.1 乐队主页（Home.vue）
 **路由**: `/band/home`
 
 **功能**:
@@ -2501,7 +1694,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 列表（el-list）
 - 快捷按钮
 
-###### 5.3.2 成员管理页面（Members.vue）
+###### 6.3.2 成员管理页面（Members.vue）
 **路由**: `/band/members`
 
 **功能**:
@@ -2516,7 +1709,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **对话框**:
 - 添加/编辑成员对话框（表单）
 
-###### 5.3.3 专辑管理页面（Albums.vue）
+###### 6.3.3 专辑管理页面（Albums.vue）
 **路由**: `/band/albums`
 
 **功能**:
@@ -2532,7 +1725,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 查看详情对话框（展示歌曲列表）
 - 查看乐评对话框（展示乐评列表）
 
-###### 5.3.4 歌曲管理页面（Songs.vue）
+###### 6.3.4 歌曲管理页面（Songs.vue）
 **路由**: `/band/songs`
 
 **功能**:
@@ -2546,7 +1739,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **对话框**:
 - 添加/编辑歌曲对话框（表单，包含专辑选择）
 
-###### 5.3.5 演唱会管理页面（Concerts.vue）
+###### 6.3.5 演唱会管理页面（Concerts.vue）
 **路由**: `/band/concerts`
 
 **功能**:
@@ -2560,7 +1753,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 **对话框**:
 - 发布/编辑演唱会对话框（表单，日期时间选择器）
 
-###### 5.3.6 歌迷数据页面（Fans.vue）
+###### 6.3.6 歌迷数据页面（Fans.vue）
 **路由**: `/band/fans`
 
 **功能**:
@@ -2579,11 +1772,11 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 图表（ECharts）
 - 统计卡片
 
-##### 5.4 歌迷用户页面
+##### 6.4 歌迷用户页面
 
 **布局**: 左侧导航菜单 + 顶部标题栏 + 主内容区
 
-###### 5.4.1 歌迷主页（Home.vue）
+###### 6.4.1 歌迷主页（Home.vue）
 **路由**: `/fan/home`
 
 **功能**:
@@ -2599,7 +1792,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 排行榜表格（el-table）
 - 快捷按钮
 
-###### 5.4.2 个人信息页面（Profile.vue）
+###### 6.4.2 个人信息页面（Profile.vue）
 **路由**: `/fan/profile`
 
 **功能**:
@@ -2612,7 +1805,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 编辑信息对话框（表单）
 - 修改密码对话框（表单，需验证旧密码）
 
-###### 5.4.3 我的喜好页面（Favorites.vue）
+###### 6.4.3 我的喜好页面（Favorites.vue）
 **路由**: `/fan/favorites`
 
 **功能**:
@@ -2640,7 +1833,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 分页（el-pagination）
 - 操作按钮
 
-###### 5.4.4 发现页面（Discovery.vue）
+###### 6.4.4 发现页面（Discovery.vue）
 **路由**: `/fan/discovery`
 
 **功能**:
@@ -2681,7 +1874,7 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 操作按钮
 - 状态标签（el-tag）
 
-###### 5.4.5 乐评管理页面（Reviews.vue）
+###### 6.4.5 乐评管理页面（Reviews.vue）
 **路由**: `/fan/reviews`
 
 **功能**:
@@ -2709,36 +1902,36 @@ GET    /api/reviews/fan/{fanId}            # 按歌迷获取乐评
 - 文本域（el-input type="textarea"）
 - 选择器（el-select）
 
-##### 5.5 UI设计规范
+##### 6.5 UI设计规范
 
-###### 5.5.1 布局规范
+###### 6.5.1 布局规范
 - 使用Element Plus的Layout组件
 - 左侧导航宽度：200px
 - 顶部标题栏高度：60px
 - 主内容区padding：20px
 
-###### 5.5.2 颜色规范
+###### 6.5.2 颜色规范
 - 主色调：Element Plus默认蓝色（#409EFF）
 - 成功：绿色（#67C23A）
 - 警告：橙色（#E6A23C）
 - 危险：红色（#F56C6C）
 - 信息：灰色（#909399）
 
-###### 5.5.3 组件规范
+###### 6.5.3 组件规范
 - 表格：使用el-table，带边框和斑马纹
 - 按钮：使用el-button，主要操作用type="primary"
 - 对话框：使用el-dialog，宽度50%或60%
 - 表单：使用el-form，label宽度100px
 - 分页：使用el-pagination，每页10或20条
 
-###### 5.5.4 交互规范
+###### 6.5.4 交互规范
 - 删除操作需二次确认（el-message-box）
 - 操作成功显示成功提示（el-message）
 - 操作失败显示错误提示（el-message）
 - 表单验证失败显示验证提示
 - 加载数据时显示loading状态
 
-##### 5.6 响应式设计
+##### 6.6 响应式设计
 - 支持桌面端（1920x1080、1366x768）
 - 表格在小屏幕下可横向滚动
 - 对话框在小屏幕下宽度自适应

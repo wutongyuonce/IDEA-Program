@@ -1,10 +1,4 @@
-# 乐队管理系统 - Java Web应用开发任务清单
-
-## 项目信息
-- **项目名称**: 乐队管理系统
-- **技术栈**: Java + Spring Boot + MyBatis + MySQL + Vue.js + Element Plus
-- **开发状态**: 🟢 核心功能已完成
-
+# 乐队管理系统 - Java Web应用开发任务清单参考
 ---
 
 ## 开发进度总览
